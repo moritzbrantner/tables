@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "declaration": true,
+    "ignoreDeprecations": "6.0",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@moritzbrantner/tables": ["./src/index.ts"],
+      "@moritzbrantner/tables/data": ["./src/data.ts"],
+      "@moritzbrantner/tables/react": ["./src/react.tsx"],
+      "@moritzbrantner/tables/virtualization": ["./src/virtualization.ts"]
+    },
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "examples/**/*.ts", "examples/**/*.tsx", "*.config.ts"]
+}

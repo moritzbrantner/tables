@@ -1,0 +1,97 @@
+{
+  "name": "@moritzbrantner/tables",
+  "version": "0.1.0",
+  "description": "React table components backed by @moritzbrantner/viz-engine.",
+  "private": false,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moritzbrantner/tables.git"
+  },
+  "homepage": "https://moritzbrantner.github.io/tables/",
+  "bugs": {
+    "url": "https://github.com/moritzbrantner/tables/issues"
+  },
+  "license": "MIT",
+  "author": "Moritz Brantner",
+  "keywords": [
+    "big-data",
+    "data-grid",
+    "react",
+    "tables",
+    "typescript",
+    "virtualization"
+  ],
+  "packageManager": "bun@1.3.14",
+  "files": [
+    "dist",
+    "docs",
+    "styles.css"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./data": {
+      "types": "./dist/data.d.ts",
+      "import": "./dist/data.js"
+    },
+    "./virtualization": {
+      "types": "./dist/virtualization.d.ts",
+      "import": "./dist/virtualization.js"
+    },
+    "./styles.css": "./styles.css",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@moritzbrantner/viz-engine": "^0.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@moritzbrantner/ui": "file:../ui",
+    "@moritzbrantner/viz-engine": "file:../viz-engine",
+    "@playwright/test": "^1.60.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^6.0.2",
+    "jsdom": "^26.1.0",
+    "publint": "^0.3.21",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwindcss": "^4.1.14",
+    "tsup": "^8.5.0",
+    "typescript": "6.0.2",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/react.tsx src/data.ts src/virtualization.ts --format esm --dts --clean --out-dir dist",
+    "build:examples": "vite build --outDir ../dist-examples --emptyOutDir",
+    "build:examples:pages": "vite build --base=/tables/ --outDir ../dist-examples --emptyOutDir",
+    "check-types": "tsc --noEmit",
+    "dev": "vite --host 0.0.0.0",
+    "pack:check": "bun run build && publint --pack bun --strict",
+    "prepack": "bun run build",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "verify": "bun run check-types && bun run test && bun run build && bun run pack:check"
+  }
+}
