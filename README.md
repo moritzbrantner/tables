@@ -192,6 +192,20 @@ datasets locally, and runs through the package aliases used during development.
 Use `bun run dev` for the playground, or `bun run build:examples:pages` to create
 a GitHub Pages-ready build under `dist-examples`.
 
+## GitHub Pages
+
+The example playground is deployed from `main` to
+[moritzbrantner.github.io/tables](https://moritzbrantner.github.io/tables/).
+The deployment workflow runs the same type-check, tests, and Pages-specific
+build used locally:
+
+```sh
+bun run check:pages
+```
+
+In the repository's **Settings → Pages**, select **GitHub Actions** as the
+deployment source. Pushes to `main` then publish the current example site.
+
 ## Release Checklist
 
 ```sh
