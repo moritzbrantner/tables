@@ -41,6 +41,13 @@ export {
   type VirtualTableProps,
 } from "./react";
 export {
+  Table,
+  type TableAlign,
+  type TableColumnDef,
+  type TableDensity,
+  type TableProps,
+} from "./table";
+export {
   getFixedVirtualRange,
   getOffsets,
   getVariableVirtualRange,
