@@ -22,8 +22,8 @@ import {
   UiTheme,
   ViewHeader,
   type UiThemeName,
-} from "@moritzbrantner/ui";
-import { SearchField } from "@moritzbrantner/ui/data";
+} from "../demo-ui";
+import { SearchField } from "../demo-ui";
 import {
   DataTable,
   VirtualTable,

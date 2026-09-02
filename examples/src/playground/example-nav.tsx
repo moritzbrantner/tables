@@ -1,4 +1,4 @@
-import { Button } from "@moritzbrantner/ui";
+import { Button } from "../demo-ui";
 
 import { exampleLinks, type ExamplePage } from "./model";
 

@@ -1,6 +1,4 @@
-@import "@moritzbrantner/ui/theme-scopes.css";
-@import "@moritzbrantner/ui/component-sources.css";
-
+@import "./demo-ui.css";
 * {
   box-sizing: border-box;
 }

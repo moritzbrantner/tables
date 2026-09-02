@@ -1,5 +1,5 @@
 import type { TableColumn } from "@moritzbrantner/tables";
-import { Badge, type BadgeProps } from "@moritzbrantner/ui";
+import { Badge, type BadgeProps } from "../demo-ui";
 
 import { formatCurrency, formatDate, formatPercent } from "./data";
 import type { AuditRow, CustomerRow, PipelineRow } from "./model";

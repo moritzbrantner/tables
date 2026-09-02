@@ -59,7 +59,6 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@moritzbrantner/ui": "^1.1.0",
     "@moritzbrantner/viz-engine": "^0.3.0",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.1.14",
