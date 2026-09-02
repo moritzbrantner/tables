@@ -1,0 +1,95 @@
+name: Decouple UI once
+
+on:
+  push:
+    branches:
+      - decouple-ui-examples
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: decouple-ui-examples
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: Apply narrow decoupling
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          examples_root = Path("examples/src")
+          replacements = 0
+          pattern = re.compile(r'from "@moritzbrantner/ui(?:/data)?"')
+          for path in examples_root.rglob("*.tsx"):
+              text = path.read_text()
+              if not pattern.search(text):
+                  continue
+              rel = os.path.relpath(examples_root / "demo-ui", path.parent).replace(os.sep, "/")
+              if not rel.startswith("."):
+                  rel = "./" + rel
+              text, count = pattern.subn(f'from "{rel}"', text)
+              replacements += count
+              path.write_text(text)
+
+          if replacements == 0:
+              raise SystemExit("expected example imports from @moritzbrantner/ui")
+
+          for path in examples_root.rglob("*"):
+              if path.is_file() and path.suffix in {".ts", ".tsx", ".css"} and "@moritzbrantner/ui" in path.read_text():
+                  if path.name != "styles.css":
+                      raise SystemExit(f"UI dependency remains in {path}")
+
+          styles = examples_root / "styles.css"
+          text = styles.read_text()
+          text = text.replace('@import "@moritzbrantner/ui/theme-scopes.css";\n', '')
+          text = text.replace('@import "@moritzbrantner/ui/component-sources.css";\n', '')
+          if '@import "./demo-ui.css";' not in text:
+              text = '@import "./demo-ui.css";\n' + text.lstrip("\n")
+          styles.write_text(text)
+
+          package_path = Path("package.json")
+          package = json.loads(package_path.read_text())
+          if package.get("devDependencies", {}).pop("@moritzbrantner/ui", None) is None:
+              raise SystemExit("expected @moritzbrantner/ui dev dependency")
+          package_path.write_text(json.dumps(package, indent=2) + "\n")
+
+          readme = Path("README.md")
+          text = readme.read_text()
+          note = (
+              "\n## Standalone examples\n\n"
+              "The GitHub Pages playground intentionally uses demo-local controls rather than\n"
+              "`@moritzbrantner/ui`. This keeps the examples representative of the published\n"
+              "`@moritzbrantner/tables` package and its `@moritzbrantner/viz-engine` peer contract.\n"
+          )
+          if "## Standalone examples" not in text:
+              text = text.rstrip() + "\n" + note
+          readme.write_text(text)
+          PY
+      - name: Refresh lockfile and install
+        run: bun install
+      - name: Check types
+        run: bun run check-types
+      - name: Unit tests
+        run: bun run test
+      - name: Build Pages examples
+        run: bun run build:examples:pages
+      - name: Check packed package
+        run: bun run pack:check
+      - name: Commit migration
+        run: |
+          rm .github/workflows/decouple-ui-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Decouple table examples from ui"
+          git push origin HEAD:decouple-ui-examples
