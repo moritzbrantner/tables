@@ -1,10 +1,11 @@
-import { createContext, useContext } from "react";
+import { cloneElement, createContext, isValidElement, useContext } from "react";
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
   InputHTMLAttributes,
   LabelHTMLAttributes,
   OptionHTMLAttributes,
+  ReactElement,
   ReactNode,
   SelectHTMLAttributes,
 } from "react";
@@ -19,8 +20,24 @@ export function UiTheme({ className, theme, ...props }: HTMLAttributes<HTMLDivEl
   return <div className={cx("demo-theme", className)} data-demo-theme={theme} {...props} />;
 }
 
-export function Button({ className, type = "button", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button className={cx("demo-button", className)} type={type} {...props} />;
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  asChild?: boolean;
+  size?: string;
+  variant?: string;
+};
+
+export function Button({ asChild = false, children, className, size, type = "button", variant, ...props }: ButtonProps) {
+  const classes = cx("demo-button", size && `demo-button--${size}`, variant && `demo-button--${variant}`, className);
+
+  if (asChild && isValidElement(children)) {
+    const child = children as ReactElement<{ className?: string }>;
+    return cloneElement(child, {
+      ...props,
+      className: cx(classes, child.props.className),
+    });
+  }
+
+  return <button className={classes} type={type} {...props}>{children}</button>;
 }
 
 export type BadgeProps = HTMLAttributes<HTMLSpanElement> & {
@@ -39,8 +56,18 @@ export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
   return <div className={cx("demo-card__header", className)} {...props} />;
 }
 
-export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cx("demo-card__title", className)} {...props} />;
+type CardTitleProps = HTMLAttributes<HTMLHeadingElement> & {
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
+};
+
+export function CardTitle({ className, level = 3, ...props }: CardTitleProps) {
+  const classes = cx("demo-card__title", className);
+  if (level === 1) return <h1 className={classes} {...props} />;
+  if (level === 2) return <h2 className={classes} {...props} />;
+  if (level === 4) return <h4 className={classes} {...props} />;
+  if (level === 5) return <h5 className={classes} {...props} />;
+  if (level === 6) return <h6 className={classes} {...props} />;
+  return <h3 className={classes} {...props} />;
 }
 
 export function CardDescription({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) {
@@ -125,10 +152,17 @@ type ToggleGroupContextValue = {
 
 const ToggleGroupContext = createContext<ToggleGroupContextValue>({});
 
-export function ToggleGroup({ children, className, onValueChange, type: _type, value, ...props }: HTMLAttributes<HTMLDivElement> & { onValueChange?: (value: string) => void; type: "single"; value?: string }) {
+type ToggleGroupProps = HTMLAttributes<HTMLDivElement> & {
+  onValueChange?: (value: string) => void;
+  type: "single";
+  value?: string;
+  variant?: string;
+};
+
+export function ToggleGroup({ children, className, onValueChange, type: _type, value, variant, ...props }: ToggleGroupProps) {
   return (
     <ToggleGroupContext.Provider value={{ onValueChange, value }}>
-      <div className={cx("demo-toggle-group", className)} {...props}>{children}</div>
+      <div className={cx("demo-toggle-group", variant && `demo-toggle-group--${variant}`, className)} {...props}>{children}</div>
     </ToggleGroupContext.Provider>
   );
 }
@@ -149,8 +183,12 @@ export function ToggleGroupItem({ children, className, value, ...props }: Omit<B
   );
 }
 
-export function Toolbar({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cx("demo-toolbar", className)} role="toolbar" {...props} />;
+type ToolbarProps = HTMLAttributes<HTMLDivElement> & {
+  justify?: "between" | "center" | "end" | "start";
+};
+
+export function Toolbar({ className, justify, ...props }: ToolbarProps) {
+  return <div className={cx("demo-toolbar", justify && `demo-toolbar--${justify}`, className)} role="toolbar" {...props} />;
 }
 
 export function ToolbarGroup({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
