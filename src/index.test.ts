@@ -23,6 +23,6 @@ const expectedRuntimeExports = [
 
 describe("public package root", () => {
   test("exports the reviewed runtime surface", () => {
-    expect(Object.keys(publicApi).sort()).toEqual(expectedRuntimeExports.toSorted());
+    expect(Object.keys(publicApi).sort()).toEqual([...expectedRuntimeExports].sort());
   });
 });
