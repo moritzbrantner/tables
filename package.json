@@ -1,7 +1,7 @@
 {
   "name": "@moritzbrantner/tables",
   "version": "0.1.0",
-  "description": "React table components backed by @moritzbrantner/viz-engine.",
+  "description": "Semantic and virtualized React tables with headless data utilities.",
   "private": false,
   "type": "module",
   "repository": {
@@ -26,7 +26,8 @@
   "files": [
     "dist",
     "docs",
-    "styles.css"
+    "styles.css",
+    "table.css"
   ],
   "sideEffects": [
     "*.css"
@@ -37,6 +38,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./table": {
+      "types": "./dist/table.d.ts",
+      "import": "./dist/table.js"
     },
     "./react": {
       "types": "./dist/react.d.ts",
@@ -51,6 +56,7 @@
       "import": "./dist/virtualization.js"
     },
     "./styles.css": "./styles.css",
+    "./table.css": "./table.css",
     "./package.json": "./package.json"
   },
   "peerDependencies": {
@@ -66,7 +72,6 @@
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
-    "@vitejs/plugin-react": "^6.0.2",
     "jsdom": "^26.1.0",
     "publint": "^0.3.21",
     "react": "^19.2.0",
@@ -82,7 +87,7 @@
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/react.tsx src/data.ts src/virtualization.ts --format esm --dts --clean --out-dir dist",
+    "build": "tsup src/index.ts src/table.tsx src/react.tsx src/data.ts src/virtualization.ts --format esm --dts --clean --out-dir dist",
     "build:examples": "vite build --outDir ../dist-examples --emptyOutDir",
     "build:examples:pages": "vite build --base=/tables/ --outDir ../dist-examples --emptyOutDir",
     "check:pages": "bun run check-types && bun run test && bun run build:examples:pages",
