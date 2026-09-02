@@ -9,7 +9,7 @@
   "optionalCapabilities": ["test:e2e", "package:check"],
   "capabilityCommands": {
     "@moritzbrantner/tables": {
-      "lint": ["bunx", "oxlint@1.67.0", "--format=github"],
+      "lint": ["bunx", "oxlint@1.80.0", "--format=github"],
       "package:check": ["bun", "run", "pack:check"]
     }
   }
