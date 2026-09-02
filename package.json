@@ -64,11 +64,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
-  "peerDependenciesMeta": {
-    "@moritzbrantner/viz-engine": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@moritzbrantner/viz-engine": "^0.3.0",
     "@playwright/test": "^1.62.1",
