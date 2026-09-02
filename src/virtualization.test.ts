@@ -57,4 +57,42 @@ describe("getVariableVirtualRange", () => {
       visibleCount: 4,
     });
   });
+
+  it("clamps scroll offsets before the start and beyond the end", () => {
+    expect(
+      getVariableVirtualRange({
+        itemSizes: [40, 60, 100],
+        overscan: 0,
+        scrollOffset: -25,
+        viewportSize: 20,
+      }),
+    ).toEqual({
+      endIndex: 1,
+      offsetAfter: 160,
+      offsetBefore: 0,
+      startIndex: 0,
+      totalSize: 200,
+      visibleCount: 1,
+    });
+
+    expect(
+      getVariableVirtualRange({
+        itemSizes: [40, 60, 100],
+        overscan: 0,
+        scrollOffset: 999,
+        viewportSize: 20,
+      }),
+    ).toEqual({
+      endIndex: 3,
+      offsetAfter: 0,
+      offsetBefore: 100,
+      startIndex: 2,
+      totalSize: 200,
+      visibleCount: 1,
+    });
+  });
+
+  it("treats negative item sizes as zero-width entries", () => {
+    expect(getOffsets([40, -10, 20])).toEqual([0, 40, 40, 60]);
+  });
 });
