@@ -75,13 +75,14 @@ describe("Table", () => {
         rows={rows}
         striped
         tableClassName="host-table-element"
-        tableProps={{ "data-testid": "results-table" }}
+        tableProps={{ id: "results-table" }}
       />,
     );
 
-    const table = screen.getByTestId("results-table");
+    const table = screen.getByRole("table");
     const container = table.closest(".mb-native-table");
 
+    expect(table.id).toBe("results-table");
     expect(container?.classList.contains("host-table")).toBe(true);
     expect(container?.classList.contains("mb-native-table--compact")).toBe(true);
     expect(container?.classList.contains("mb-native-table--striped")).toBe(true);
