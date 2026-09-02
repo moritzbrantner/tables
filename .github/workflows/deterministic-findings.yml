@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
 
       - name: Inspect deterministic findings
-        uses: moritzbrantner/coding-tooling@1cd6573cab54e3af86c660ede836365d14e78519
+        uses: moritzbrantner/coding-tooling@81da4fbbdbe75a8937716cbab0b9a47c447269e8
         with:
           operation: findings
           bun-version: 1.3.14
