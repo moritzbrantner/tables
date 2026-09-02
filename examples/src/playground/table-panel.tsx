@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@moritzbrantner/ui";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../demo-ui";
 
 type TablePanelProps = {
   children: ReactNode;

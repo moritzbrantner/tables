@@ -216,3 +216,9 @@ bun run verify
 bunx publint --pack bun --strict
 bun run build:examples
 ```
+
+## Standalone examples
+
+The GitHub Pages playground intentionally uses demo-local controls rather than
+`@moritzbrantner/ui`. This keeps the examples representative of the published
+`@moritzbrantner/tables` package and its `@moritzbrantner/viz-engine` peer contract.
