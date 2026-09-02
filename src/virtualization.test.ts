@@ -30,11 +30,36 @@ describe("getFixedVirtualRange", () => {
         scrollOffset: 0,
         viewportSize: 100,
       }),
-    ).toMatchObject({
-      endIndex: 0,
-      startIndex: 0,
-      visibleCount: 0,
-    });
+    ).toMatchObject({ endIndex: 0, startIndex: 0, visibleCount: 0 });
+  });
+
+  it("preserves range and spacer invariants across boundary offsets", () => {
+    for (const count of [1, 2, 5, 9]) {
+      for (const itemSize of [1, 3, 7]) {
+        const totalSize = count * itemSize;
+        for (const viewportSize of [1, 2, 5, 11]) {
+          for (const overscan of [0, 1, 3]) {
+            for (const scrollOffset of [-5, 0, 1, totalSize - 1, totalSize, totalSize + 5]) {
+              const range = getFixedVirtualRange({
+                count,
+                itemSize,
+                overscan,
+                scrollOffset,
+                viewportSize,
+              });
+
+              expect(range.startIndex).toBeGreaterThanOrEqual(0);
+              expect(range.endIndex).toBeGreaterThanOrEqual(range.startIndex);
+              expect(range.endIndex).toBeLessThanOrEqual(count);
+              expect(range.visibleCount).toBe(range.endIndex - range.startIndex);
+              expect(range.offsetBefore).toBe(range.startIndex * itemSize);
+              expect(range.offsetAfter).toBe((count - range.endIndex) * itemSize);
+              expect(range.totalSize).toBe(totalSize);
+            }
+          }
+        }
+      }
+    }
   });
 });
 
@@ -94,5 +119,26 @@ describe("getVariableVirtualRange", () => {
 
   it("treats negative item sizes as zero-width entries", () => {
     expect(getOffsets([40, -10, 20])).toEqual([0, 40, 40, 60]);
+  });
+
+  it("preserves range and spacer invariants for varied item sizes", () => {
+    for (const itemSizes of [[1, 2, 3, 4], [8, 1, 5, 2], [3, 3, 3, 3], [1, 10, 1, 10]]) {
+      const offsets = getOffsets(itemSizes);
+      const totalSize = offsets.at(-1) ?? 0;
+      for (const overscan of [0, 1, 2]) {
+        for (const viewportSize of [1, 3, 7]) {
+          for (const scrollOffset of [-3, 0, 1, totalSize - 1, totalSize, totalSize + 3]) {
+            const range = getVariableVirtualRange({ itemSizes, overscan, scrollOffset, viewportSize });
+            expect(range.startIndex).toBeGreaterThanOrEqual(0);
+            expect(range.endIndex).toBeGreaterThanOrEqual(range.startIndex);
+            expect(range.endIndex).toBeLessThanOrEqual(itemSizes.length);
+            expect(range.visibleCount).toBe(range.endIndex - range.startIndex);
+            expect(range.offsetBefore).toBe(offsets[range.startIndex]);
+            expect(range.offsetAfter).toBe(totalSize - offsets[range.endIndex]);
+            expect(range.totalSize).toBe(totalSize);
+          }
+        }
+      }
+    }
   });
 });
