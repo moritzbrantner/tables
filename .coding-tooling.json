@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "profile": "repository-foundation-v1",
+  "tiers": {
+    "fast": ["lint", "typecheck", "build", "test:unit"],
+    "full": ["lint", "typecheck", "build", "test:unit", "test:e2e", "package:check"]
+  },
+  "requiredCapabilities": ["lint", "typecheck", "build", "test:unit"],
+  "optionalCapabilities": ["test:e2e", "package:check"],
+  "capabilityCommands": {
+    "@moritzbrantner/tables": {
+      "lint": ["bunx", "oxlint@1.80.0", "--format=github"],
+      "package:check": ["bun", "run", "pack:check"]
+    }
+  }
+}
