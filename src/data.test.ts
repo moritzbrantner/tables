@@ -9,91 +9,95 @@ import {
 } from "./data";
 
 type Row = {
-  active: boolean;
-  city: string;
-  createdAt: Date;
+  active: boolean | null;
+  createdAt: Date | null;
   id: string;
-  revenue: number;
-  segment: string;
+  name: string;
+  region: string;
+  score: number | null;
+  tags?: readonly string[];
 };
-
-const columns: TableColumn<Row>[] = [
-  { accessor: "active", header: "Active", id: "active", sortable: true, type: "boolean" },
-  { accessor: "city", header: "City", id: "city", sortable: true },
-  { accessor: "createdAt", header: "Created", id: "createdAt", sortable: true, type: "date" },
-  { accessor: "segment", header: "Segment", id: "segment" },
-  { accessor: "revenue", header: "Revenue", id: "revenue", sortable: true },
-];
 
 const rows: Row[] = [
   {
     active: true,
-    city: "Berlin",
-    createdAt: new Date("2024-01-04T00:00:00.000Z"),
+    createdAt: new Date("2026-01-03T00:00:00Z"),
     id: "a",
-    revenue: 42,
-    segment: "Enterprise",
+    name: "Alpha Enterprise",
+    region: "Berlin",
+    score: 30,
+    tags: ["core", "eu"],
   },
   {
     active: false,
-    city: "Boston",
-    createdAt: new Date("2024-01-24T00:00:00.000Z"),
+    createdAt: new Date("2026-01-01T00:00:00Z"),
     id: "b",
-    revenue: 12,
-    segment: "SMB",
+    name: "Beta SMB",
+    region: "Boston",
+    score: 10,
+    tags: ["edge"],
   },
   {
     active: true,
-    city: "Tokyo",
-    createdAt: new Date("2024-02-14T00:00:00.000Z"),
+    createdAt: new Date("2026-01-02T00:00:00Z"),
     id: "c",
-    revenue: 88,
-    segment: "Enterprise",
+    name: "Gamma Enterprise",
+    region: "Tokyo",
+    score: 20,
+    tags: ["core", "apac"],
+  },
+  {
+    active: null,
+    createdAt: null,
+    id: "d",
+    name: "Äpfel Enterprise",
+    region: "München",
+    score: null,
   },
 ];
 
-describe("table data helpers", () => {
-  it("filters across visible columns", () => {
+const columns: TableColumn<Row>[] = [
+  { accessor: "id", header: "ID", id: "id", type: "string" },
+  { accessor: "name", header: "Name", id: "name", type: "string" },
+  { accessor: "region", header: "Region", id: "region", type: "string" },
+  { accessor: "score", header: "Score", id: "score", sortable: true, type: "number" },
+  { accessor: "createdAt", header: "Created", id: "createdAt", type: "date" },
+  { accessor: "active", header: "Active", id: "active", type: "boolean" },
+  { accessor: "tags", header: "Tags", id: "tags", type: "json" },
+];
+
+describe("table data semantics", () => {
+  it("filters with a global query", () => {
     expect(applyTableFilter(rows, columns, { query: "enterprise" }).map((row) => row.id)).toEqual([
       "a",
       "c",
+      "d",
     ]);
   });
 
-  it("applies structured string filters", () => {
+  it("applies structured string, number, date, and boolean filters", () => {
     expect(
       applyTableFilter(rows, columns, {
-        columnFilters: [{ columnId: "segment", operator: "contains", value: "enter" }],
+        columnFilters: [{ columnId: "name", operator: "contains", value: "enterprise" }],
+      }).map((row) => row.id),
+    ).toEqual(["a", "c", "d"]);
+
+    expect(
+      applyTableFilter(rows, columns, {
+        columnFilters: [{ columnId: "score", operator: "gte", value: 20 }],
       }).map((row) => row.id),
     ).toEqual(["a", "c"]);
-  });
 
-  it("applies structured number filters", () => {
     expect(
       applyTableFilter(rows, columns, {
-        columnFilters: [{ columnId: "revenue", operator: "gte", value: 42 }],
+        columnFilters: [{
+          columnId: "createdAt",
+          operator: "between",
+          value: [new Date("2026-01-02T00:00:00Z"), new Date("2026-01-03T00:00:00Z")],
+        }],
       }).map((row) => row.id),
     ).toEqual(["a", "c"]);
-  });
 
-  it("applies structured date ranges", () => {
-    expect(
-      applyTableFilter(rows, columns, {
-        columnFilters: [
-          {
-            columnId: "createdAt",
-            operator: "between",
-            value: [
-              new Date("2024-01-01T00:00:00.000Z"),
-              new Date("2024-01-31T23:59:59.000Z"),
-            ],
-          },
-        ],
-      }).map((row) => row.id),
-    ).toEqual(["a", "b"]);
-  });
-
-  it("applies structured boolean filters", () => {
     expect(
       applyTableFilter(rows, columns, {
         columnFilters: [{ columnId: "active", operator: "equals", value: true }],
@@ -101,65 +105,94 @@ describe("table data helpers", () => {
     ).toEqual(["a", "c"]);
   });
 
-  it("combines structured filters with global search", () => {
+  it("supports membership, null checks, JSON search, and unicode-insensitive search", () => {
     expect(
       applyTableFilter(rows, columns, {
-        columnFilters: [{ columnId: "segment", operator: "equals", value: "Enterprise" }],
+        columnFilters: [{ columnId: "region", operator: "in", value: ["Berlin", "Tokyo"] }],
+      }).map((row) => row.id),
+    ).toEqual(["a", "c"]);
+
+    expect(
+      applyTableFilter(rows, columns, {
+        columnFilters: [{ columnId: "score", operator: "isNull" }],
+      }).map((row) => row.id),
+    ).toEqual(["d"]);
+
+    expect(applyTableFilter(rows, columns, { query: "apac" }).map((row) => row.id)).toEqual(["c"]);
+    expect(applyTableFilter(rows, columns, { query: "ÄPFEL" }).map((row) => row.id)).toEqual(["d"]);
+  });
+
+  it("combines structured filtering with global search and custom predicate fallback", () => {
+    expect(
+      applyTableFilter(rows, columns, {
+        columnFilters: [{ columnId: "active", operator: "equals", value: true }],
         query: "tokyo",
       }).map((row) => row.id),
     ).toEqual(["c"]);
-  });
 
-  it("keeps query filtering when structured filters are cleared", () => {
     expect(
       applyTableFilter(rows, columns, {
-        columnFilters: [],
-        query: "boston",
+        columnFilters: [{ columnId: "active", operator: "equals", value: true }],
+        predicate: (row, _rowIndex, query) => query === "special" && row.id === "a",
+        query: "special",
       }).map((row) => row.id),
-    ).toEqual(["b"]);
+    ).toEqual(["a"]);
   });
 
-  it("sorts stably by a selected column", () => {
+  it("sorts stably and supports multi-sort plus sortAccessor", () => {
     expect(
-      applyTableSort(rows, columns, [{ columnId: "revenue", direction: "asc" }]).map(
-        (row) => row.id,
-      ),
-    ).toEqual(["b", "a", "c"]);
+      applyTableSort(rows, columns, [{ columnId: "score", direction: "asc" }]).map((row) => row.id),
+    ).toEqual(["b", "c", "a", "d"]);
+
+    const repeated = [
+      { ...rows[0], id: "x", score: 20, region: "B" },
+      { ...rows[1], id: "y", score: 20, region: "A" },
+      { ...rows[2], id: "z", score: 20, region: "A" },
+    ];
+    expect(
+      applyTableSort(repeated, columns, [
+        { columnId: "score", direction: "asc" },
+        { columnId: "region", direction: "asc" },
+      ]).map((row) => row.id),
+    ).toEqual(["y", "z", "x"]);
+
+    const accessorColumns: TableColumn<Row>[] = [
+      {
+        accessor: "score",
+        header: "Score",
+        id: "score",
+        sortAccessor: (row) => row.score == null ? null : -row.score,
+        type: "number",
+      },
+    ];
+    expect(
+      applyTableSort(rows, accessorColumns, [{ columnId: "score", direction: "asc" }]).map((row) => row.id),
+    ).toEqual(["a", "c", "b", "d"]);
   });
 
-  it("creates a filtered and sorted table model", () => {
-    expect(
-      createTableModel({
-        columns,
-        filter: { query: "b" },
-        rows,
-        sort: [{ columnId: "revenue", direction: "desc" }],
-      }),
-    ).toMatchObject({
-      filteredRowCount: 2,
-      sortedRowCount: 2,
-      totalRowCount: 3,
+  it("creates a filtered and sorted model with stable counts", () => {
+    const model = createTableModel({
+      columns,
+      filter: { query: "enterprise" },
+      rows,
+      sort: [{ columnId: "score", direction: "desc" }],
     });
+
+    expect(model.totalRowCount).toBe(4);
+    expect(model.filteredRowCount).toBe(3);
+    expect(model.sortedRowCount).toBe(3);
+    expect(model.rows.map((row) => row.id)).toEqual(["d", "a", "c"]);
   });
 
-  it("cycles sort state", () => {
-    expect(getNextSortState([], "city")).toEqual([{
-      columnId: "city",
-      direction: "asc",
-    }]);
-    expect(getNextSortState([{ columnId: "city", direction: "asc" }], "city")).toEqual([{
-      columnId: "city",
-      direction: "desc",
-    }]);
-    expect(getNextSortState([{ columnId: "city", direction: "desc" }], "city")).toEqual([]);
-  });
-
-  it("cycles sort state without removing other columns in multi-sort mode", () => {
-    expect(
-      getNextSortState([{ columnId: "city", direction: "asc" }], "revenue", true),
-    ).toEqual([
-      { columnId: "city", direction: "asc" },
-      { columnId: "revenue", direction: "asc" },
+  it("cycles sort state and preserves multi-sort order", () => {
+    expect(getNextSortState([], "score")).toEqual([{ columnId: "score", direction: "asc" }]);
+    expect(getNextSortState([{ columnId: "score", direction: "asc" }], "score")).toEqual([
+      { columnId: "score", direction: "desc" },
+    ]);
+    expect(getNextSortState([{ columnId: "score", direction: "desc" }], "score")).toEqual([]);
+    expect(getNextSortState([{ columnId: "name", direction: "asc" }], "score", true)).toEqual([
+      { columnId: "name", direction: "asc" },
+      { columnId: "score", direction: "asc" },
     ]);
   });
 });

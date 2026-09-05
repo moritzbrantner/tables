@@ -39,7 +39,7 @@ export {
   type TableProcessingMode,
   type TableSelectionMode,
   type VirtualTableProps,
-} from "./react";
+} from "./react-rust";
 export {
   Table,
   type TableAlign,

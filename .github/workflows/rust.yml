@@ -12,6 +12,9 @@ on:
       - "scripts/benchmark-virtualization.ts"
       - "scripts/check-wasm-package.mjs"
       - "scripts/copy-wasm.mjs"
+      - "src/data*.ts"
+      - "src/query-kernel.ts"
+      - "src/react*.tsx"
       - "src/virtualization.ts"
       - "src/virtualization.test.ts"
       - "src/wasm*.ts"
@@ -27,6 +30,9 @@ on:
       - "scripts/benchmark-virtualization.ts"
       - "scripts/check-wasm-package.mjs"
       - "scripts/copy-wasm.mjs"
+      - "src/data*.ts"
+      - "src/query-kernel.ts"
+      - "src/react*.tsx"
       - "src/virtualization.ts"
       - "src/virtualization.test.ts"
       - "src/wasm*.ts"
@@ -89,6 +95,21 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup default stable
+
+      - name: Generate migration lockfiles
+        run: |
+          cargo generate-lockfile --manifest-path crates/tables-wasm/Cargo.toml
+          bun install
+
+      - name: Upload migration lockfiles
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: table-query-lockfiles-${{ github.sha }}
+          path: |
+            bun.lock
+            crates/tables-wasm/Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify adapter lockfile
         run: cargo metadata --locked --manifest-path crates/tables-wasm/Cargo.toml --no-deps --format-version 1 > /dev/null
