@@ -67,7 +67,7 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
       - name: Test
-        run: cargo test --locked --workspace --all-targets --all-features
+        run: cargo test --locked --workspace --all-features
 
       - name: Check documentation
         env:
