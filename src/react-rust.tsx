@@ -20,17 +20,17 @@ export type {
 } from "./react";
 
 export function DataTable<TRow>(props: DataTableProps<TRow>) {
-  const kernelRevision = useTableRustKernel();
-  return <CoreDataTable key={kernelRevision} {...props} />;
+  useTableRustKernel();
+  return <CoreDataTable {...props} />;
 }
 
 export function VirtualTable<TRow>(props: VirtualTableProps<TRow>) {
-  const kernelRevision = useTableRustKernel();
-  return <CoreVirtualTable key={kernelRevision} {...props} />;
+  useTableRustKernel();
+  return <CoreVirtualTable {...props} />;
 }
 
 function useTableRustKernel() {
-  const [kernelRevision, setKernelRevision] = useState(0);
+  const [, setKernelRevision] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -45,6 +45,4 @@ function useTableRustKernel() {
       mounted = false;
     };
   }, []);
-
-  return kernelRevision;
 }
