@@ -392,6 +392,17 @@ function matchesColumnFilter(value: unknown, filter: TableColumnFilter): boolean
   if (operator === "isNotNull") {
     return value != null;
   }
+  if (operator === "equals") {
+    return filterValuesEqual(value, filter.value, filter.caseSensitive === true);
+  }
+  if (operator === "notEquals") {
+    return !filterValuesEqual(value, filter.value, filter.caseSensitive === true);
+  }
+  if (operator === "in") {
+    return Array.isArray(filter.value) && filter.value.some((candidate) =>
+      filterValuesEqual(value, candidate, filter.caseSensitive === true),
+    );
+  }
 
   if (value instanceof Date || typeof value === "number") {
     const actual = value instanceof Date ? value.getTime() : value;
@@ -447,10 +458,6 @@ function matchesBooleanFilter(actual: boolean, filter: TableColumnFilter): boole
 }
 
 function matchesStringFilter(value: unknown, filter: TableColumnFilter): boolean {
-  if (value == null) {
-    return filter.operator === "notEquals";
-  }
-
   const actual = normalizeStringValue(value, filter.caseSensitive === true);
   const expected = normalizeStringValue(filter.value, filter.caseSensitive === true);
 
@@ -461,17 +468,21 @@ function matchesStringFilter(value: unknown, filter: TableColumnFilter): boolean
       return actual.startsWith(expected);
     case "endsWith":
       return actual.endsWith(expected);
-    case "equals":
-      return actual === expected;
-    case "notEquals":
-      return actual !== expected;
-    case "in":
-      return Array.isArray(filter.value) && filter.value.some((candidate) =>
-        actual === normalizeStringValue(candidate, filter.caseSensitive === true),
-      );
     default:
       return false;
   }
+}
+
+function filterValuesEqual(left: unknown, right: unknown, caseSensitive: boolean): boolean {
+  if (left == null || right == null || Array.isArray(right)) {
+    return left === right;
+  }
+
+  if (typeof left === "string" || typeof right === "string") {
+    return normalizeStringValue(left, caseSensitive) === normalizeStringValue(right, caseSensitive);
+  }
+
+  return stringifyCellValue(left) === stringifyCellValue(right);
 }
 
 function compareForSort(left: unknown, right: unknown, direction: TableSortDirection): number {
