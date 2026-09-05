@@ -9,6 +9,7 @@ on:
       - "crates/**"
       - "docs/rust-foundation.md"
       - "package.json"
+      - "scripts/benchmark-virtualization.ts"
       - "scripts/check-wasm-package.mjs"
       - "scripts/copy-wasm.mjs"
       - "src/virtualization.ts"
@@ -23,6 +24,7 @@ on:
       - "crates/**"
       - "docs/rust-foundation.md"
       - "package.json"
+      - "scripts/benchmark-virtualization.ts"
       - "scripts/check-wasm-package.mjs"
       - "scripts/copy-wasm.mjs"
       - "src/virtualization.ts"
@@ -122,6 +124,17 @@ jobs:
 
       - name: Check packaged Wasm artifacts
         run: node ./scripts/check-wasm-package.mjs
+
+      - name: Measure TypeScript/Wasm boundary
+        run: bun run benchmark:virtualization
+
+      - name: Upload boundary benchmark evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: virtualization-boundary-${{ github.sha }}
+          path: .artifacts/virtualization-boundary-benchmark.json
+          if-no-files-found: error
+          retention-days: 14
 
   benchmark:
     name: Benchmark evidence

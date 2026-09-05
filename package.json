@@ -92,11 +92,13 @@
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
+    "benchmark:virtualization": "bun run build:wasm:node:release && bun ./scripts/benchmark-virtualization.ts",
     "build": "tsup src/index.ts src/table.tsx src/react.tsx src/data.ts src/virtualization.ts src/wasm.ts --format esm --dts --clean --out-dir dist && node ./scripts/copy-wasm.mjs",
     "build:examples": "vite build --outDir ../dist-examples --emptyOutDir",
     "build:examples:pages": "vite build --base=/tables/ --outDir ../dist-examples --emptyOutDir",
     "build:wasm": "wasm-pack build crates/tables-wasm --target web --release --out-dir ../../src/wasm/generated --out-name tables_wasm",
     "build:wasm:node": "wasm-pack build crates/tables-wasm --target nodejs --dev --out-dir ../../.artifacts/tables-wasm-node --out-name tables_wasm",
+    "build:wasm:node:release": "wasm-pack build crates/tables-wasm --target nodejs --release --out-dir ../../.artifacts/tables-wasm-node-release --out-name tables_wasm",
     "check:pages": "bun run check-types && bun run test && bun run build:examples:pages",
     "check-types": "tsc --noEmit",
     "dev": "vite --host 0.0.0.0",

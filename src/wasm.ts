@@ -1,7 +1,6 @@
 import {
+  createVariableVirtualLayout,
   getFixedVirtualRange,
-  getOffsets,
-  getVariableVirtualRange,
   type FixedVirtualRangeOptions,
   type VariableVirtualRangeOptions,
   type VirtualRange,
@@ -67,17 +66,15 @@ export function createTableVariableLayout(itemSizes: readonly number[]): TableVa
 }
 
 function createTypeScriptVariableLayout(itemSizes: readonly number[]): TableVariableLayout {
-  const sizes = Array.from(itemSizes);
-  const offsets = getOffsets(sizes);
-  const totalSize = offsets[offsets.length - 1] ?? 0;
+  const layout = createVariableVirtualLayout(itemSizes);
 
   return {
     backend: "typescript",
-    length: sizes.length,
-    totalSize,
+    length: layout.length,
+    totalSize: layout.totalSize,
     dispose() {},
     virtualRange(options) {
-      return getVariableVirtualRange({ ...options, itemSizes: sizes });
+      return layout.virtualRange(options);
     },
   };
 }

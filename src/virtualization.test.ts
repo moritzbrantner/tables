@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getFixedVirtualRange, getOffsets, getVariableVirtualRange } from "./virtualization";
+import {
+  createVariableVirtualLayout,
+  getFixedVirtualRange,
+  getOffsets,
+  getVariableVirtualRange,
+} from "./virtualization";
 
 describe("getFixedVirtualRange", () => {
   it("returns a padded range for a scrolled viewport", () => {
@@ -191,5 +196,41 @@ describe("getVariableVirtualRange", () => {
         }
       }
     }
+  });
+});
+
+describe("createVariableVirtualLayout", () => {
+  it("reuses normalized geometry across viewport queries", () => {
+    const itemSizes = [40, -10, Number.NaN, 60, 100, 80];
+    const layout = createVariableVirtualLayout(itemSizes);
+
+    expect(layout.length).toBe(6);
+    expect(layout.totalSize).toBe(280);
+
+    for (const options of [
+      { overscan: 0, scrollOffset: -20, viewportSize: 20 },
+      { overscan: 1, scrollOffset: 70, viewportSize: 120 },
+      { overscan: 2, scrollOffset: 220, viewportSize: 60 },
+      { overscan: 1, scrollOffset: Number.POSITIVE_INFINITY, viewportSize: 25 },
+    ]) {
+      expect(layout.virtualRange(options)).toEqual(
+        getVariableVirtualRange({ ...options, itemSizes }),
+      );
+    }
+  });
+
+  it("does not observe later mutations of the source size array", () => {
+    const itemSizes = [40, 60, 100, 80];
+    const layout = createVariableVirtualLayout(itemSizes);
+    const expected = layout.virtualRange({ overscan: 1, scrollOffset: 70, viewportSize: 120 });
+
+    itemSizes[0] = 4000;
+    itemSizes.push(5000);
+
+    expect(layout.length).toBe(4);
+    expect(layout.totalSize).toBe(280);
+    expect(layout.virtualRange({ overscan: 1, scrollOffset: 70, viewportSize: 120 })).toEqual(
+      expected,
+    );
   });
 });
