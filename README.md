@@ -2,7 +2,7 @@
 
 React table primitives for both ordinary document-flow tables and large interactive data grids.
 
-`tables` sits alongside `charts`, `maps`, and `diagrams`. It should make the simple case simpler than hand-written table markup while keeping virtualization, querying, selection, resizing, and server-driven state available when a dataset actually needs them.
+`tables` sits alongside `charts`, `maps`, and `diagrams`. It should make the simple case simpler than hand-written table markup while keeping virtualization, querying, selection, resizing, and server-driven state available when a dataset actually needs them. The package is self-contained: built-in table query semantics live in its own Rust core rather than an underlying visualization/query engine.
 
 ## Choose the smallest table that fits
 
@@ -63,10 +63,10 @@ The semantic table accepts host classes, per-column classes, row classes, CSS wi
 
 ## Virtual table
 
-Install `@moritzbrantner/viz-engine` when using the current query-backed virtual/data-grid APIs:
+The query-backed virtual/data-grid APIs are part of `@moritzbrantner/tables`; no separate query-engine package is required.
 
 ```sh
-bun add @moritzbrantner/tables @moritzbrantner/viz-engine
+bun add @moritzbrantner/tables
 ```
 
 ```tsx
@@ -129,10 +129,19 @@ export function OrdersTable({ rows }: { rows: Order[] }) {
 - `Table`: native semantic table for compact result sets and document flow.
 - `VirtualTable`: fixed-height row virtualization with optional variable-width column virtualization.
 - `DataTable`: a convenience virtual-table wrapper with compact and comfortable density presets.
-- `createTableModel`: headless filtering and multi-column sorting through `@moritzbrantner/viz-engine`.
+- `createTableModel`: headless filtering and stable multi-column sorting using table-owned query semantics.
 - `getFixedVirtualRange` and `getVariableVirtualRange`: standalone virtualization primitives.
 - Row selection, column resizing, sticky columns, and column menus for the interactive grid surface.
 - CSS variables and class names for host-app styling without a design-system dependency.
+
+## Ownership
+
+- `tables-core` owns built-in structured filtering, global search, stable multi-sort, source-index selection, and table-specific virtualization geometry.
+- `tables-wasm` is a thin browser adapter over `tables-core`; it does not introduce a generic frame, layer, renderer, or dataset abstraction.
+- TypeScript/React owns public component APIs, DOM semantics, accessibility, controlled state, events, and JavaScript callbacks such as custom predicates and accessors.
+- The React entry points load the package-local Rust query kernel when available. SSR/bootstrap and unsupported environments retain the tested synchronous TypeScript compatibility path.
+
+Custom `predicate` and `sortAccessor` functions remain JavaScript callbacks. Their results can be converted to typed columnar values for the Rust query operation; arbitrary functions are never serialized into Wasm.
 
 ## State API
 
@@ -210,7 +219,9 @@ Columns infer their filter type from row values. Use `column.type` to force one 
 
 - Rows are windowed by scroll position, so rendering cost is tied to viewport size rather than row count.
 - Columns can be windowed too, which keeps wide operational tables responsive.
-- Sorting and filtering are headless and explicit. For server-side data, pass already processed rows and use `mode="manual"`.
+- Built-in filtering/search/sorting is a coarse table operation backed by `tables-core` in the browser once the local Wasm kernel is loaded.
+- Fine-grained scroll geometry remains cached TypeScript because measured JS↔Wasm crossing overhead is larger than the geometry computation itself.
+- For server-side data, pass already processed rows and use `mode="manual"`.
 - Do not virtualize a table merely because the capability exists; ordinary rendering is the default when the dataset is small enough.
 
 ## Migration Notes

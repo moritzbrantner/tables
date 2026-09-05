@@ -1,6 +1,6 @@
 # Rust foundation
 
-`tables` uses Rust only where there is a clear table-specific computation boundary and a measurable reason to pay the Wasm/native integration cost. The goal is not to rewrite React in Rust; the goal is to make hot-path table computation small, reusable, testable, and fast.
+`tables` owns its table-specific computation directly. There is no underlying generic visualization/query engine.
 
 ## Semantic ownership
 
@@ -9,60 +9,39 @@
 | Semantic `<table>` rendering | TypeScript/React |
 | Virtual grid DOM, accessibility, focus, events | TypeScript/React |
 | Controlled/uncontrolled component state | TypeScript/React |
-| Filtering, sorting, query semantics | `@moritzbrantner/viz-engine` |
-| Table-specific virtualization/geometry kernels | `tables-core` |
-| Browser bridge to Rust | thin `tables-wasm` adapter |
+| User callbacks (`accessor`, `sortAccessor`, custom predicate) | TypeScript adapter |
+| Built-in filters, search, stable multi-sort, source-index selection | `tables-core` |
+| Table-specific virtualization geometry | `tables-core` |
+| Browser bridge to Rust | `tables-wasm` |
 
-This boundary intentionally prevents `tables` from cloning filtering and sorting logic that already has a semantic owner in `viz-engine`.
+`tables-wasm` is deliberately thin. It accepts typed/columnar values and a compact table query, delegates semantics to `tables-core`, and returns source row indices. It does not introduce frames, layers, renderers, or a generic dataset abstraction.
 
-## Virtualization kernel
+## Query boundary
 
-`tables-core` owns fixed-size and variable-size viewport geometry. `VariableLayout` builds prefix offsets once, making repeated viewport queries O(log n) and allocation-free after O(n) construction. Fixed-size range queries remain O(1).
+The TypeScript adapter evaluates JavaScript accessors once while constructing typed columns. Numeric/date and boolean columns cross as typed arrays; string-like values cross as stable strings. Rust then owns the built-in operation:
 
-Malformed negative, NaN, and non-finite item sizes are normalized to zero before they enter the search structure. The TypeScript fallback uses the same normalization so the adapter boundary has one reviewed semantic contract rather than two subtly different implementations.
+1. structured filters are ANDed;
+2. optional global search is applied;
+3. multi-column sorting is stable;
+4. source row order resolves exact ties;
+5. source indices are returned to TypeScript.
 
-## Wasm adapter
+Custom predicates remain in JavaScript because arbitrary callbacks cannot be moved into Rust without turning the Wasm boundary into per-row callback traffic. When a custom predicate is present, Rust still evaluates built-in structured/search candidates and TypeScript applies only that callback portion.
 
-`tables-wasm` is deliberately thin. It depends on `tables-core`, receives typed numeric inputs, and returns one six-number range record. It does not own table semantics.
+## Browser initialization
 
-The browser adapter exposes a persistent Wasm variable layout handle so item sizes cross the boundary once instead of on every scroll event. Consumers opt in by loading the `@moritzbrantner/tables/wasm` subpath. Until that load succeeds, the helper APIs use the existing TypeScript implementation.
+The React entry points load the package-local Wasm kernel automatically. The first render/SSR path retains a TypeScript compatibility implementation with the same tested contract; once the kernel is ready, the component remounts onto Rust-backed querying. Headless consumers can explicitly call `loadTableWasmKernel()`.
 
-A failed Wasm load therefore degrades to TypeScript rather than breaking table rendering. React, DOM events, focus, accessibility, controlled state, filtering, and sorting remain outside the Wasm layer.
+## Virtualization boundary
+
+Variable viewport geometry is cached on both sides. Hosted measurement showed the JS↔Wasm crossing costs more than the actual cached viewport computation, so fine-grained scroll geometry remains cached TypeScript in the production component. That decision is independent of query ownership: table filtering/search/sorting is a coarser batched operation and is now directly Rust-owned.
 
 ## Verification policy
 
-Rust verification is independent of the existing Bun/React CI and includes:
+Rust verification includes formatting, strict Clippy, unit/invariant tests, rustdoc, benchmark compilation, and descriptive benchmark evidence. Browser verification additionally builds the local Wasm package and proves TypeScript/Rust/Wasm parity for both virtualization and query semantics.
 
-1. `cargo fmt --check`;
-2. Clippy across all core targets with warnings denied;
-3. workspace unit/invariant tests;
-4. rustdoc with warnings denied;
-5. compilation of every core benchmark target;
-6. adapter formatting, Clippy, tests, and rustdoc;
-7. compiled TypeScript/Rust/Wasm parity tests over fixed, variable, malformed, and generated deterministic cases;
-8. package checks that require both the Wasm JS glue and binary to be present;
-9. execution of descriptive benchmark scenarios with the output retained as a workflow artifact.
-
-The Wasm parity gate compares exact `VirtualRange` objects rather than only checking that the module loads. Variable cases reuse one Rust layout across many queries so the test exercises the intended persistent boundary.
-
-## Benchmark policy
-
-Benchmark timings are evidence, not merge thresholds yet. Hosted runners vary, and a new kernel should not invent a percentage gate before enough history exists to distinguish real regressions from runner noise.
-
-The initial scenarios cover O(1) fixed-size viewport queries, cached O(log n) variable-size viewport queries over 100,000 items, and O(n) construction of a 100,000-item variable layout.
-
-After enough representative evidence is collected, regression thresholds can be introduced deliberately with a documented baseline and variance budget.
-
-## Wasm migration rule
-
-The Wasm adapter is opt-in. Before any React/browser path becomes Rust-backed by default:
-
-1. parity must remain exact across TypeScript, Rust, and Wasm;
-2. inputs stay typed/batched rather than row-object serialized;
-3. the TypeScript fallback stays available;
-4. packaging continues to prove the Wasm artifacts are actually shipped;
-5. profiling must show the Wasm boundary pays for itself for the target workload.
+Dependency lockfiles are fail-closed in normal CI. Benchmark timings remain evidence rather than merge thresholds until enough historical runner data exists to define stable variance budgets.
 
 ## Expansion rule
 
-Additional kernels belong in Rust only when they are reusable table computation rather than UI policy. Likely candidates are cached column geometry, visible-column index lookup, and batched viewport calculations. Selection semantics, DOM focus, ARIA behavior, and React event orchestration remain in TypeScript unless a separate measured computational kernel emerges.
+New Rust work must remain table-specific and computation-oriented. React rendering, accessibility, DOM focus, event ownership, and arbitrary JavaScript callbacks stay out of Rust. New kernels should be batched enough to justify the boundary and should carry deterministic parity evidence before becoming browser defaults.

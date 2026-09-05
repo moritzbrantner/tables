@@ -1,3 +1,4 @@
+import { setTableQueryKernel } from "./query-kernel";
 import {
   createVariableVirtualLayout,
   getFixedVirtualRange,
@@ -42,6 +43,7 @@ export async function loadTableWasmKernel(): Promise<TableWasmKernel | null> {
   loadingKernel = loadGeneratedModule()
     .then((module) => {
       loadedKernel = createTableWasmKernelFromModule(module);
+      setTableQueryKernel(loadedKernel);
       return loadedKernel;
     })
     .catch(() => null);

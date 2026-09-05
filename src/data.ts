@@ -1,20 +1,25 @@
-import {
-  createVizEngine,
-  type VizTableCellValue,
-  type VizTableColumnarDataset,
-  type VizTableColumnDefinition,
-  type VizTableColumnType,
-  type VizTableFilter,
-  type VizTableFilterOperator,
-  type VizTableQuery,
-} from "@moritzbrantner/viz-engine/core";
 import type { ReactNode } from "react";
+
+import { getTableQueryKernel } from "./query-kernel";
 
 export type TableColumnAlign = "center" | "end" | "start";
 
-export type TableColumnType = VizTableColumnType;
+export type TableColumnType = "boolean" | "date" | "json" | "number" | "string" | "unknown";
 
-export type TableFilterOperator = VizTableFilterOperator;
+export type TableFilterOperator =
+  | "between"
+  | "contains"
+  | "endsWith"
+  | "equals"
+  | "gt"
+  | "gte"
+  | "in"
+  | "isNotNull"
+  | "isNull"
+  | "lt"
+  | "lte"
+  | "notEquals"
+  | "startsWith";
 
 export type TableRowKey = string | number;
 
@@ -107,6 +112,21 @@ export function createTableModel<TRow>({
   rows,
   sort,
 }: TableModelOptions<TRow>): TableModel<TRow> {
+  const kernel = getTableQueryKernel();
+
+  if (kernel && !hasActivePredicate(filter)) {
+    const result = kernel.queryTable(rows, columns, hasTableFilter(filter) ? filter : null, sort);
+    const modelRows = rowsFromSourceIndices(rows, result.sourceIndices);
+
+    return {
+      columns,
+      filteredRowCount: result.filteredRowCount,
+      rows: modelRows,
+      sortedRowCount: modelRows.length,
+      totalRowCount: rows.length,
+    };
+  }
+
   const filteredRows = filter && hasTableFilter(filter)
     ? applyTableFilter(rows, columns, filter)
     : Array.from(rows);
@@ -129,50 +149,35 @@ export function applyTableFilter<TRow>(
   filter: TableFilter<TRow>,
 ): TRow[] {
   const query = filter.query?.trim() ?? "";
-  const structuredFilters = createVizTableFilters(filter.columnFilters);
+  const structuredFilters = filter.columnFilters ?? [];
 
   if (!query && structuredFilters.length === 0) {
     return Array.from(rows);
   }
 
-  if (!query) {
-    const sourceIndices = getVizTableSourceIndices(rows, columns, {
-      filters: structuredFilters,
-    });
-
-    return sourceIndices
-      .map((sourceIndex) => rows[sourceIndex])
-      .filter((row): row is TRow => row !== undefined);
+  const kernel = getTableQueryKernel();
+  if (!kernel) {
+    return applyTableFilterTypeScript(rows, columns, filter);
   }
 
-  const searchColumnIds = getFilterColumns(columns, filter.queryColumnIds).map(
-    (column) => column.id,
-  );
-  const searchResult = getVizTableSourceIndices(rows, columns, {
-    filters: structuredFilters,
-    search: {
-      caseSensitive: false,
-      columnIds: searchColumnIds,
-      query,
-    },
-  });
-  const searchSourceIndices = new Set(searchResult);
-  const structuredSourceIndices =
-    structuredFilters.length > 0
-      ? new Set(
-          getVizTableSourceIndices(rows, columns, {
-            filters: structuredFilters,
-          }),
-        )
-      : null;
+  const builtIn = kernel.queryTable(rows, columns, filter, []);
+  if (!query || !filter.predicate) {
+    return rowsFromSourceIndices(rows, builtIn.sourceIndices);
+  }
 
-  return rows.filter((row, rowIndex) => {
-    return (
-      searchSourceIndices.has(rowIndex) ||
-      ((structuredSourceIndices === null || structuredSourceIndices.has(rowIndex)) &&
-        filter.predicate?.(row, rowIndex, filter.query ?? "") === true)
-    );
-  });
+  const predicateCandidates = structuredFilters.length > 0
+    ? kernel.queryTable(rows, columns, { columnFilters: structuredFilters }, []).sourceIndices
+    : rows.map((_, rowIndex) => rowIndex);
+  const included = new Set(builtIn.sourceIndices);
+
+  for (const rowIndex of predicateCandidates) {
+    const row = rows[rowIndex];
+    if (row !== undefined && filter.predicate(row, rowIndex, filter.query ?? "")) {
+      included.add(rowIndex);
+    }
+  }
+
+  return rows.filter((_, rowIndex) => included.has(rowIndex));
 }
 
 export function applyTableSort<TRow>(
@@ -180,33 +185,16 @@ export function applyTableSort<TRow>(
   columns: readonly TableColumn<TRow>[],
   sort: TableSortState,
 ): TRow[] {
-  const sortRules = sort.flatMap((rule) => {
-    const column = columns.find((candidate) => candidate.id === rule.columnId);
-
-    if (!column) {
-      return [];
-    }
-
-    return [
-      {
-        columnId: getSortColumnId(column),
-        direction: rule.direction,
-        nulls: rule.direction === "asc" ? "last" as const : "first" as const,
-      },
-    ];
-  });
-
-  if (sortRules.length === 0) {
+  if (sort.length === 0) {
     return Array.from(rows);
   }
 
-  const sourceIndices = getVizTableSourceIndices(rows, columns, {
-    sort: sortRules,
-  });
+  const kernel = getTableQueryKernel();
+  if (kernel) {
+    return rowsFromSourceIndices(rows, kernel.queryTable(rows, columns, null, sort).sourceIndices);
+  }
 
-  return sourceIndices
-    .map((sourceIndex) => rows[sourceIndex])
-    .filter((row): row is TRow => row !== undefined);
+  return applyTableSortTypeScript(rows, columns, sort);
 }
 
 export function getColumnValue<TRow, TValue>(
@@ -229,9 +217,9 @@ export function getNextSortState(
   const currentRule = currentSort.find((rule) => rule.columnId === columnId);
   const nextRule = !currentRule
     ? {
-      columnId,
-      direction: "asc",
-    } satisfies TableSortRule
+        columnId,
+        direction: "asc",
+      } satisfies TableSortRule
     : currentRule.direction === "asc"
       ? {
           columnId,
@@ -330,250 +318,260 @@ export function updateTableState<TRow, TKey extends keyof TableState<TRow>>(
   };
 }
 
-function hasTableFilter<TRow>(filter: TableFilter<TRow> | null | undefined) {
-  return Boolean(filter?.query?.trim() || (filter?.columnFilters?.length ?? 0) > 0);
+function applyTableFilterTypeScript<TRow>(
+  rows: readonly TRow[],
+  columns: readonly TableColumn<TRow>[],
+  filter: TableFilter<TRow>,
+): TRow[] {
+  const query = filter.query?.trim() ?? "";
+  const structuredFilters = filter.columnFilters ?? [];
+  const searchColumns = getFilterColumns(columns, filter.queryColumnIds);
+
+  return rows.filter((row, rowIndex) => {
+    const structuredMatch = structuredFilters.every((columnFilter) => {
+      const column = columns.find((candidate) => candidate.id === columnFilter.columnId);
+      return column ? matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter) : false;
+    });
+
+    if (!structuredMatch) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    const searchMatch = searchColumns.some((column) =>
+      normalizeSearchText(getColumnValue(column, row, rowIndex)).includes(query.toLowerCase()),
+    );
+
+    return searchMatch || filter.predicate?.(row, rowIndex, filter.query ?? "") === true;
+  });
 }
 
-function createVizTableFilters(
-  filters: readonly TableColumnFilter[] | undefined,
-): VizTableFilter[] {
-  return (filters ?? []).map((filter) => ({
-    caseSensitive: filter.caseSensitive,
-    columnId: filter.columnId,
-    operator: filter.operator,
-    value: toVizTableFilterValue(filter.value),
-  }));
-}
+function applyTableSortTypeScript<TRow>(
+  rows: readonly TRow[],
+  columns: readonly TableColumn<TRow>[],
+  sort: TableSortState,
+): TRow[] {
+  const rules = sort.flatMap((rule) => {
+    const column = columns.find((candidate) => candidate.id === rule.columnId);
+    return column ? [{ column, direction: rule.direction }] : [];
+  });
 
-function toVizTableFilterValue(
-  value: TableColumnFilter["value"],
-): VizTableFilter["value"] {
-  if (Array.isArray(value)) {
-    return value.map((entry) => toVizTableCellValue(entry));
+  if (rules.length === 0) {
+    return Array.from(rows);
   }
 
-  return toVizTableCellValue(value);
+  return rows
+    .map((row, rowIndex) => ({ row, rowIndex }))
+    .sort((left, right) => {
+      for (const rule of rules) {
+        const leftValue = rule.column.sortAccessor
+          ? rule.column.sortAccessor(left.row, left.rowIndex)
+          : getColumnValue(rule.column, left.row, left.rowIndex);
+        const rightValue = rule.column.sortAccessor
+          ? rule.column.sortAccessor(right.row, right.rowIndex)
+          : getColumnValue(rule.column, right.row, right.rowIndex);
+        const comparison = compareForSort(leftValue, rightValue, rule.direction);
+        if (comparison !== 0) {
+          return comparison;
+        }
+      }
+
+      return left.rowIndex - right.rowIndex;
+    })
+    .map(({ row }) => row);
+}
+
+function matchesColumnFilter(value: unknown, filter: TableColumnFilter): boolean {
+  const operator = filter.operator;
+  if (operator === "isNull") {
+    return value == null;
+  }
+  if (operator === "isNotNull") {
+    return value != null;
+  }
+  if (operator === "equals") {
+    return filterValuesEqual(value, filter.value, filter.caseSensitive === true);
+  }
+  if (operator === "notEquals") {
+    return !filterValuesEqual(value, filter.value, filter.caseSensitive === true);
+  }
+  if (operator === "in") {
+    return Array.isArray(filter.value) && filter.value.some((candidate) =>
+      filterValuesEqual(value, candidate, filter.caseSensitive === true),
+    );
+  }
+
+  if (value instanceof Date || typeof value === "number") {
+    const actual = value instanceof Date ? value.getTime() : value;
+    return matchesNumericFilter(actual, filter);
+  }
+
+  if (typeof value === "boolean") {
+    return matchesBooleanFilter(value, filter);
+  }
+
+  return matchesStringFilter(value, filter);
+}
+
+function matchesNumericFilter(actual: number, filter: TableColumnFilter): boolean {
+  const expected = toNumericValue(filter.value);
+  switch (filter.operator) {
+    case "equals":
+      return expected !== null && actual === expected;
+    case "notEquals":
+      return expected === null || actual !== expected;
+    case "gt":
+      return expected !== null && actual > expected;
+    case "gte":
+      return expected !== null && actual >= expected;
+    case "lt":
+      return expected !== null && actual < expected;
+    case "lte":
+      return expected !== null && actual <= expected;
+    case "between": {
+      const [min, max] = Array.isArray(filter.value) ? filter.value : [];
+      const minValue = toNumericValue(min);
+      const maxValue = toNumericValue(max);
+      return minValue !== null && maxValue !== null && actual >= minValue && actual <= maxValue;
+    }
+    case "in":
+      return Array.isArray(filter.value) && filter.value.some((candidate) => toNumericValue(candidate) === actual);
+    default:
+      return false;
+  }
+}
+
+function matchesBooleanFilter(actual: boolean, filter: TableColumnFilter): boolean {
+  switch (filter.operator) {
+    case "equals":
+      return actual === filter.value;
+    case "notEquals":
+      return actual !== filter.value;
+    case "in":
+      return Array.isArray(filter.value) && filter.value.includes(actual);
+    default:
+      return false;
+  }
+}
+
+function matchesStringFilter(value: unknown, filter: TableColumnFilter): boolean {
+  const actual = normalizeStringValue(value, filter.caseSensitive === true);
+  const expected = normalizeStringValue(filter.value, filter.caseSensitive === true);
+
+  switch (filter.operator) {
+    case "contains":
+      return actual.includes(expected);
+    case "startsWith":
+      return actual.startsWith(expected);
+    case "endsWith":
+      return actual.endsWith(expected);
+    default:
+      return false;
+  }
+}
+
+function filterValuesEqual(left: unknown, right: unknown, caseSensitive: boolean): boolean {
+  if (left == null || right == null || Array.isArray(right)) {
+    return left === right;
+  }
+
+  if (typeof left === "string" || typeof right === "string") {
+    return normalizeStringValue(left, caseSensitive) === normalizeStringValue(right, caseSensitive);
+  }
+
+  return stringifyCellValue(left) === stringifyCellValue(right);
+}
+
+function compareForSort(left: unknown, right: unknown, direction: TableSortDirection): number {
+  const leftNull = left == null || (typeof left === "number" && !Number.isFinite(left));
+  const rightNull = right == null || (typeof right === "number" && !Number.isFinite(right));
+
+  if (leftNull || rightNull) {
+    if (leftNull && rightNull) {
+      return 0;
+    }
+    const nullsFirst = direction === "desc";
+    return leftNull === nullsFirst ? -1 : 1;
+  }
+
+  const leftValue = left instanceof Date ? left.getTime() : left;
+  const rightValue = right instanceof Date ? right.getTime() : right;
+  let comparison = 0;
+
+  if (typeof leftValue === "number" && typeof rightValue === "number") {
+    comparison = leftValue === rightValue ? 0 : leftValue < rightValue ? -1 : 1;
+  } else if (typeof leftValue === "boolean" && typeof rightValue === "boolean") {
+    comparison = Number(leftValue) - Number(rightValue);
+  } else {
+    const leftString = stringifyCellValue(leftValue);
+    const rightString = stringifyCellValue(rightValue);
+    comparison = leftString === rightString ? 0 : leftString < rightString ? -1 : 1;
+  }
+
+  return direction === "asc" ? comparison : -comparison;
 }
 
 function getFilterColumns<TRow>(
   columns: readonly TableColumn<TRow>[],
   columnIds?: readonly string[],
-) {
+): readonly TableColumn<TRow>[] {
   if (!columnIds || columnIds.length === 0) {
     return columns;
   }
 
   const enabled = new Set(columnIds);
-
   return columns.filter((column) => enabled.has(column.id));
 }
 
-function getVizTableSourceIndices<TRow>(
-  rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
-  query: VizTableQuery,
-): readonly number[] {
-  if (rows.length === 0) {
-    return [];
+function rowsFromSourceIndices<TRow>(rows: readonly TRow[], sourceIndices: readonly number[]): TRow[] {
+  return sourceIndices
+    .map((sourceIndex) => rows[sourceIndex])
+    .filter((row): row is TRow => row !== undefined);
+}
+
+function hasTableFilter<TRow>(filter: TableFilter<TRow> | null | undefined): boolean {
+  return Boolean(filter?.query?.trim() || (filter?.columnFilters?.length ?? 0) > 0);
+}
+
+function hasActivePredicate<TRow>(filter: TableFilter<TRow> | null | undefined): boolean {
+  return Boolean(filter?.query?.trim() && filter.predicate);
+}
+
+function normalizeSearchText(value: unknown): string {
+  return stringifyCellValue(value).toLowerCase();
+}
+
+function normalizeStringValue(value: unknown, caseSensitive: boolean): string {
+  const string = stringifyCellValue(value);
+  return caseSensitive ? string : string.toLowerCase();
+}
+
+function stringifyCellValue(value: unknown): string {
+  if (value == null) {
+    return "";
   }
-
-  const engine = createVizEngine({ backend: "auto" });
-  const datasetId = engine.addDataset(createVizTableDataset(rows, columns));
-
-  engine.addLayer({
-    datasetId,
-    kind: "table",
-    query,
-  });
-
-  const frame = engine.computeFrame({
-    frameFormat: "typed",
-    viewport: {
-      kind: "table",
-      rowLimit: rows.length,
-      rowOffset: 0,
-    },
-  });
-  const layer = frame.layers.find(
-    (candidate) => candidate.kind === "table" && "typedTable" in candidate,
-  );
-
-  return layer?.kind === "table" && "typedTable" in layer
-    ? Array.from(layer.typedTable.sourceIndex)
-    : [];
-}
-
-function createVizTableDataset<TRow>(
-  rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
-): VizTableColumnarDataset {
-  const tableColumns = createVizTableColumns(rows, columns);
-
-  return {
-    columns: tableColumns.map((column) => createVizTableColumn(rows, columns, column)),
-    kind: "table",
-    rowIds: rows.map((_, rowIndex) => String(rowIndex)),
-  };
-}
-
-function createVizTableColumn<TRow>(
-  rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
-  definition: VizTableColumnDefinition,
-): VizTableColumnarDataset["columns"][number] {
-  const values = rows.map((row, rowIndex) =>
-    getVizTableColumnValue(row, rowIndex, columns, definition.id),
-  );
-
-  switch (definition.type) {
-    case "date":
-    case "number":
-      return {
-        ...definition,
-        type: definition.type,
-        validity: createNumericColumnValidity(values),
-        values: Float64Array.from(values, (value) => toVizNumericValue(value) ?? 0),
-      };
-    case "boolean":
-      return {
-        ...definition,
-        type: "boolean",
-        validity: createBooleanColumnValidity(values),
-        values: Uint8Array.from(values, (value) => value === true ? 1 : 0),
-      };
-    default:
-      return {
-        ...definition,
-        values: values.map((value) => toVizTableCellValue(value)),
-      };
+  if (value instanceof Date) {
+    return String(value.getTime());
   }
-}
-
-function getVizTableColumnValue<TRow>(
-  row: TRow,
-  rowIndex: number,
-  columns: readonly TableColumn<TRow>[],
-  columnId: string,
-) {
-  const sortColumn = columns.find((column) => getSortColumnId(column) === columnId);
-
-  if (sortColumn?.sortAccessor && columnId === getSortColumnId(sortColumn)) {
-    return sortColumn.sortAccessor(row, rowIndex);
+  if (Array.isArray(value)) {
+    return `[${value.map(stringifyCellValue).join(",")}]`;
   }
-
-  const column = columns.find((candidate) => candidate.id === columnId);
-
-  return column ? getColumnValue(column, row, rowIndex) : null;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${key}:${stringifyCellValue(record[key])}`)
+      .join(",")}}`;
+  }
+  return String(value);
 }
 
-function createNumericColumnValidity(values: readonly unknown[]) {
-  return Uint8Array.from(values, (value) => toVizNumericValue(value) == null ? 0 : 1);
-}
-
-function createBooleanColumnValidity(values: readonly unknown[]) {
-  return Uint8Array.from(values, (value) => value == null ? 0 : 1);
-}
-
-function toVizNumericValue(value: unknown) {
+function toNumericValue(value: unknown): number | null {
   if (value instanceof Date) {
     return value.getTime();
   }
-
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-
-function createVizTableColumns<TRow>(
-  rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
-): VizTableColumnDefinition[] {
-  return columns.flatMap((column) => {
-    const definitions: VizTableColumnDefinition[] = [
-      {
-        id: column.id,
-        key: column.id,
-        label: typeof column.header === "string" ? column.header : column.id,
-        nullable: true,
-        searchable: true,
-        filterable: column.filterable ?? true,
-        sortable: column.sortable ?? true,
-        type: column.type ??
-          inferColumnType(rows, (row, rowIndex) => getColumnValue(column, row, rowIndex)),
-      },
-    ];
-
-    if (column.sortAccessor) {
-      definitions.push({
-        filterable: false,
-        id: getSortColumnId(column),
-        key: getSortColumnId(column),
-        label: `${column.id} sort`,
-        nullable: true,
-        searchable: false,
-        sortable: true,
-        type: inferColumnType(rows, column.sortAccessor),
-      });
-    }
-
-    return definitions;
-  });
-}
-
-function getSortColumnId<TRow>(column: TableColumn<TRow>): string {
-  return column.sortAccessor ? `${sortColumnPrefix}${column.id}` : column.id;
-}
-
-function inferColumnType<TRow>(
-  rows: readonly TRow[],
-  accessor: (row: TRow, rowIndex: number) => unknown,
-): VizTableColumnType {
-  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-    const value = accessor(rows[rowIndex], rowIndex);
-
-    if (value == null) {
-      continue;
-    }
-
-    if (value instanceof Date) {
-      return "date";
-    }
-
-    if (Array.isArray(value)) {
-      return "json";
-    }
-
-    switch (typeof value) {
-      case "boolean":
-        return "boolean";
-      case "number":
-        return "number";
-      case "object":
-        return "json";
-      case "string":
-        return "string";
-      default:
-        return "unknown";
-    }
-  }
-
-  return "unknown";
-}
-
-function toVizTableCellValue(value: unknown): VizTableCellValue {
-  if (
-    value == null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    value instanceof Date
-  ) {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  return typeof value === "object" ? (value as Record<string, unknown>) : String(value);
-}
-
-const sortColumnPrefix = "__mb_tables_sort__";

@@ -1,12 +1,14 @@
-//! Pure, allocation-conscious kernels for table virtualization.
+//! Pure, allocation-conscious kernels for table virtualization and querying.
 //!
-//! This crate deliberately owns only table-specific computation. Rendering,
-//! accessibility, controlled state, and DOM event handling stay in the
-//! TypeScript/React layer, while filtering and sorting remain owned by
-//! `@moritzbrantner/viz-engine`.
+//! Built-in filtering, search, sorting, and virtualization geometry are owned
+//! here. React rendering, accessibility, controlled state, DOM events, and
+//! JavaScript callbacks remain in the TypeScript adapter layer.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+
+/// Table filtering, search, and stable sorting kernels.
+pub mod query;
 
 /// A half-open virtualized item range and its surrounding geometry.
 #[derive(Clone, Copy, Debug, PartialEq)]
