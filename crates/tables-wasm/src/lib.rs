@@ -31,7 +31,7 @@ pub fn fixed_virtual_range_wasm(
 }
 
 /// Persistent variable-size layout whose prefix offsets are built once.
-#[wasm_bindgen(js_name = VariableLayout)]
+#[wasm_bindgen]
 pub struct WasmVariableLayout {
     inner: CoreVariableLayout,
 }

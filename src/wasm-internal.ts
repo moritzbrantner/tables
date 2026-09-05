@@ -25,7 +25,7 @@ type GeneratedVariableLayout = {
 };
 
 type GeneratedTablesWasmModule = {
-  VariableLayout: new (itemSizes: Float64Array) => GeneratedVariableLayout;
+  WasmVariableLayout: new (itemSizes: Float64Array) => GeneratedVariableLayout;
   fixedVirtualRange(
     count: number,
     itemSize: number,
@@ -40,7 +40,7 @@ export function createTableWasmKernelFromModule(value: unknown): TableWasmKernel
 
   return {
     createVariableLayout(itemSizes) {
-      const layout = new module.VariableLayout(Float64Array.from(itemSizes));
+      const layout = new module.WasmVariableLayout(Float64Array.from(itemSizes));
       let disposed = false;
 
       return {
@@ -103,7 +103,10 @@ function readGeneratedModule(value: unknown): GeneratedTablesWasmModule | null {
     return null;
   }
 
-  if (typeof value.fixedVirtualRange !== "function" || typeof value.VariableLayout !== "function") {
+  if (
+    typeof value.fixedVirtualRange !== "function" ||
+    typeof value.WasmVariableLayout !== "function"
+  ) {
     return null;
   }
 
