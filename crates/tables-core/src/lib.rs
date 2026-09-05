@@ -115,12 +115,9 @@ impl VariableLayout {
         let total_size = self.total_size();
         let safe_offset = normalized_offset(options.scroll_offset, total_size);
         let visible_start = find_index_at_offset(&self.offsets, safe_offset);
-        let visible_end = find_index_at_offset(
-            &self.offsets,
-            safe_offset + options.viewport_size,
-        )
-        .saturating_add(1)
-        .min(count);
+        let visible_end = find_index_at_offset(&self.offsets, safe_offset + options.viewport_size)
+            .saturating_add(1)
+            .min(count);
         let start_index = visible_start.saturating_sub(options.overscan);
         let end_index = visible_end
             .saturating_add(options.overscan)
@@ -356,7 +353,11 @@ mod tests {
             for index in 0..count {
                 seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
                 let generated = ((seed >> 32) % 73) as f64;
-                sizes.push(if index % 11 == 0 { 0.0 } else { generated + 1.0 });
+                sizes.push(if index % 11 == 0 {
+                    0.0
+                } else {
+                    generated + 1.0
+                });
             }
 
             let layout = VariableLayout::new(&sizes);
@@ -387,8 +388,8 @@ mod tests {
                         assert!(actual.end_index <= count);
                         assert_eq!(actual.visible_count, actual.end_index - actual.start_index);
 
-                        let rendered_size =
-                            layout.offsets()[actual.end_index] - layout.offsets()[actual.start_index];
+                        let rendered_size = layout.offsets()[actual.end_index]
+                            - layout.offsets()[actual.start_index];
                         assert_close(
                             actual.offset_before + rendered_size + actual.offset_after,
                             actual.total_size,
