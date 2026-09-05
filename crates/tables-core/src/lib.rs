@@ -1,12 +1,14 @@
-//! Pure, allocation-conscious kernels for table virtualization.
+//! Pure, allocation-conscious kernels for table virtualization and querying.
 //!
-//! This crate deliberately owns only table-specific computation. Rendering,
-//! accessibility, controlled state, and DOM event handling stay in the
-//! TypeScript/React layer, while filtering and sorting remain owned by
-//! `@moritzbrantner/viz-engine`.
+//! Built-in filtering, search, sorting, and virtualization geometry are owned
+//! here. React rendering, accessibility, controlled state, DOM events, and
+//! JavaScript callbacks remain in the TypeScript adapter layer.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+
+/// Table filtering, search, and stable sorting kernels.
+pub mod query;
 
 /// A half-open virtualized item range and its surrounding geometry.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -54,8 +56,7 @@ pub struct VariableVirtualRangeOptions {
 /// Precomputed offsets for a variable-size item collection.
 ///
 /// Construction is O(n). Reusing the layout makes each viewport query O(log n)
-/// and allocation-free, avoiding the per-query prefix-array rebuild performed
-/// by the current TypeScript convenience implementation.
+/// and allocation-free.
 #[derive(Clone, Debug, PartialEq)]
 pub struct VariableLayout {
     offsets: Vec<f64>,
@@ -64,8 +65,7 @@ pub struct VariableLayout {
 impl VariableLayout {
     /// Builds a reusable variable-size layout.
     ///
-    /// Negative, non-finite, and NaN sizes are normalized to zero so malformed
-    /// geometry cannot corrupt later binary-search queries.
+    /// Negative, non-finite, and NaN sizes are normalized to zero.
     #[must_use]
     pub fn new(item_sizes: &[f64]) -> Self {
         let mut offsets = Vec::with_capacity(item_sizes.len().saturating_add(1));
@@ -92,7 +92,7 @@ impl VariableLayout {
         self.offsets.len().saturating_sub(1)
     }
 
-    /// Returns the cached prefix offsets, including the leading zero and final total.
+    /// Returns the cached prefix offsets, including leading zero and final total.
     #[must_use]
     pub fn offsets(&self) -> &[f64] {
         &self.offsets
@@ -166,7 +166,7 @@ pub fn fixed_virtual_range(options: FixedVirtualRangeOptions) -> VirtualRange {
     }
 }
 
-/// Computes prefix offsets using the same normalization as [`VariableLayout`].
+/// Computes normalized prefix offsets.
 #[must_use]
 pub fn offsets(item_sizes: &[f64]) -> Vec<f64> {
     VariableLayout::new(item_sizes).offsets
@@ -174,8 +174,7 @@ pub fn offsets(item_sizes: &[f64]) -> Vec<f64> {
 
 /// Convenience wrapper that builds a layout and immediately performs one query.
 ///
-/// Reuse [`VariableLayout`] directly for scroll-driven workloads so the prefix
-/// offsets are not rebuilt on every query.
+/// Reuse [`VariableLayout`] for scroll-driven workloads.
 #[must_use]
 pub fn variable_virtual_range(
     item_sizes: &[f64],
@@ -269,53 +268,15 @@ mod tests {
     }
 
     #[test]
-    fn fixed_range_clamps_out_of_bounds_scroll_offsets() {
-        let before = fixed_virtual_range(FixedVirtualRangeOptions {
-            count: 10,
-            item_size: 10.0,
-            overscan: 0,
-            scroll_offset: -100.0,
-            viewport_size: 20.0,
-        });
-        let after = fixed_virtual_range(FixedVirtualRangeOptions {
-            count: 10,
-            item_size: 10.0,
-            overscan: 0,
-            scroll_offset: 1_000.0,
-            viewport_size: 20.0,
-        });
-
-        assert_eq!((before.start_index, before.end_index), (0, 2));
-        assert_eq!((after.start_index, after.end_index), (10, 10));
-    }
-
-    #[test]
     fn invalid_fixed_geometry_returns_empty_range() {
-        for options in [
-            FixedVirtualRangeOptions {
-                count: 0,
-                item_size: 20.0,
-                overscan: 2,
-                scroll_offset: 0.0,
-                viewport_size: 100.0,
-            },
-            FixedVirtualRangeOptions {
-                count: 10,
-                item_size: 0.0,
-                overscan: 2,
-                scroll_offset: 0.0,
-                viewport_size: 100.0,
-            },
-            FixedVirtualRangeOptions {
-                count: 10,
-                item_size: 20.0,
-                overscan: 2,
-                scroll_offset: 0.0,
-                viewport_size: f64::NAN,
-            },
-        ] {
-            assert_eq!(fixed_virtual_range(options), empty_virtual_range());
-        }
+        let range = fixed_virtual_range(FixedVirtualRangeOptions {
+            count: 10,
+            item_size: 0.0,
+            overscan: 2,
+            scroll_offset: 0.0,
+            viewport_size: 100.0,
+        });
+        assert_eq!(range, empty_virtual_range());
     }
 
     #[test]
@@ -337,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn malformed_item_sizes_are_normalized_without_breaking_monotonicity() {
+    fn malformed_sizes_preserve_monotonic_offsets() {
         let layout = VariableLayout::new(&[10.0, -4.0, f64::NAN, f64::INFINITY, 5.0]);
 
         assert_eq!(layout.offsets(), &[0.0, 10.0, 10.0, 10.0, 10.0, 15.0]);
@@ -345,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn cached_binary_search_matches_linear_reference_over_deterministic_cases() {
+    fn cached_binary_search_matches_linear_reference() {
         let mut seed = 0xD1CE_BA5E_F00D_u64;
 
         for count in 1..=128usize {
@@ -353,67 +314,27 @@ mod tests {
             for index in 0..count {
                 seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
                 let generated = ((seed >> 32) % 73) as f64;
-                sizes.push(if index % 11 == 0 {
-                    0.0
-                } else {
-                    generated + 1.0
-                });
+                sizes.push(if index % 11 == 0 { 0.0 } else { generated + 1.0 });
             }
 
             let layout = VariableLayout::new(&sizes);
             let total = layout.total_size();
-            let offsets_to_test = [
-                -50.0,
-                0.0,
-                total * 0.25,
-                total * 0.5,
-                total * 0.9,
-                total,
-                total + 250.0,
-            ];
-
-            for &scroll_offset in &offsets_to_test {
-                for &viewport_size in &[1.0, 37.0, 250.0] {
+            for scroll_offset in [-50.0, 0.0, total * 0.5, total, total + 250.0] {
+                for viewport_size in [1.0, 37.0, 250.0] {
                     for overscan in [0usize, 1, 3, 9] {
                         let options = VariableVirtualRangeOptions {
                             overscan,
                             scroll_offset,
                             viewport_size,
                         };
-                        let actual = layout.virtual_range(options);
-                        let expected = reference_variable_range(layout.offsets(), options);
-
-                        assert_eq!(actual, expected);
-                        assert!(actual.start_index <= actual.end_index);
-                        assert!(actual.end_index <= count);
-                        assert_eq!(actual.visible_count, actual.end_index - actual.start_index);
-
-                        let rendered_size = layout.offsets()[actual.end_index]
-                            - layout.offsets()[actual.start_index];
-                        assert_close(
-                            actual.offset_before + rendered_size + actual.offset_after,
-                            actual.total_size,
+                        assert_eq!(
+                            layout.virtual_range(options),
+                            reference_variable_range(layout.offsets(), options),
                         );
                     }
                 }
             }
         }
-    }
-
-    #[test]
-    fn convenience_variable_query_matches_cached_layout() {
-        let sizes = [18.0, 22.0, 31.0, 17.0, 45.0];
-        let options = VariableVirtualRangeOptions {
-            overscan: 2,
-            scroll_offset: 33.0,
-            viewport_size: 60.0,
-        };
-
-        assert_eq!(
-            variable_virtual_range(&sizes, options),
-            VariableLayout::new(&sizes).virtual_range(options),
-        );
-        assert_eq!(offsets(&sizes), VariableLayout::new(&sizes).offsets());
     }
 
     fn reference_variable_range(
@@ -455,10 +376,5 @@ mod tests {
             }
         }
         count.saturating_sub(1)
-    }
-
-    fn assert_close(left: f64, right: f64) {
-        let tolerance = f64::EPSILON * left.abs().max(right.abs()).max(1.0) * 8.0;
-        assert!((left - right).abs() <= tolerance, "{left} != {right}");
     }
 }

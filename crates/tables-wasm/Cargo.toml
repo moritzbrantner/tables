@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/moritzbrantner/tables"
-description = "Thin WebAssembly adapter for tables-core virtualization kernels."
+description = "Thin WebAssembly adapter for tables-core kernels."
 publish = false
 
 [workspace]
@@ -13,6 +13,9 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
 tables-core = { path = "../tables-core" }
 wasm-bindgen = "=0.2.128"
 
