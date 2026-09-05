@@ -12,16 +12,12 @@ import {
   EmptyHeader,
   Label,
   MetricStrip,
-  NativeSelect,
-  NativeSelectOption,
   ToggleGroup,
   ToggleGroupItem,
   Toolbar,
   ToolbarGroup,
   ToolbarSpacer,
-  UiTheme,
   ViewHeader,
-  type UiThemeName,
 } from "../demo-ui";
 import { SearchField } from "../demo-ui";
 import {
@@ -47,28 +43,8 @@ import { getExamplePage } from "./example-routing";
 import { TablePanel } from "./table-panel";
 import type { AuditRow, CustomerRow, PipelineRow, TableDensity } from "./model";
 
-const exampleThemes = ["bobba", "zleek", "atlas", "studio", "paper", "pop", "pulse"] as const;
-
-const defaultPageThemes = {
-  dense: "zleek",
-  examples: "bobba",
-  states: "pulse",
-  wide: "atlas",
-} satisfies Record<ReturnType<typeof getExamplePage>, UiThemeName>;
-
-const themeLabels = {
-  atlas: "Atlas",
-  bobba: "Bobba",
-  paper: "Paper",
-  pop: "Pop",
-  pulse: "Pulse",
-  studio: "Studio",
-  zleek: "Zleek",
-} satisfies Record<(typeof exampleThemes)[number], string>;
-
 export function App() {
   const page = getExamplePage();
-  const [theme, setTheme] = useState<UiThemeName>(defaultPageThemes[page]);
   const pipelineRows = useMemo(() => createPipelineRows(50000), []);
   const denseRows = useMemo(() => createPipelineRows(100000), []);
   const customerRows = useMemo(() => createCustomerRows(25000), []);
@@ -114,61 +90,58 @@ export function App() {
   );
 
   return (
-    <UiTheme theme={theme} className="app-theme">
-      <main className="app-shell">
-        <header className="site-header">
-          <a className="site-header__brand" href="./">
-            @moritzbrantner/tables
-          </a>
-          <ExampleNav page={page} />
-        </header>
+    <main className="app-shell">
+      <header className="site-header">
+        <a className="site-header__brand" href="./">
+          @moritzbrantner/tables
+        </a>
+        <ExampleNav page={page} />
+      </header>
 
-        <ViewHeader
-          actions={<ThemeControl onChange={setTheme} value={theme} />}
-          className="hero"
-          data-testid="examples-hero"
-          description="Virtualized React tables for large operational datasets, typed columns, and explicit data workflows."
-          eyebrow="Examples"
-          title="@moritzbrantner/tables"
-        >
-          <MetricStrip className="hero__metrics" items={heroMetrics} />
-        </ViewHeader>
+      <ViewHeader
+        className="hero"
+        data-testid="examples-hero"
+        description="Virtualized React tables for large operational datasets, typed columns, and explicit data workflows."
+        eyebrow="Examples"
+        title="@moritzbrantner/tables"
+      >
+        <MetricStrip className="hero__metrics" items={heroMetrics} />
+      </ViewHeader>
 
-        <div className="content-grid">
-          {page === "dense" ? (
-            <DenseDataPage
-              denseRows={denseRows}
-              filter={pipelineFilter}
-              setFilter={setPipelineFilter}
-            />
-          ) : page === "wide" ? (
-            <WideTablePage
-              customerRows={customerRows}
-              filter={customerFilter}
-              setFilter={setCustomerFilter}
-            />
-          ) : page === "states" ? (
-            <StatesPage
-              auditRows={auditRows}
-              selectedAuditRow={selectedAuditRow}
-              setSelectedAuditRow={setSelectedAuditRow}
-            />
-          ) : (
-            <OverviewPage
-              density={density}
-              onDensityChange={setDensity}
-              onModelChange={handleModelChange}
-              filter={pipelineFilter}
-              rowHeight={rowHeight}
-              rows={pipelineRows}
-              selectedRow={selectedPipelineRow}
-              setFilter={setPipelineFilter}
-              setSelectedRow={setSelectedPipelineRow}
-            />
-          )}
-        </div>
-      </main>
-    </UiTheme>
+      <div className="content-grid">
+        {page === "dense" ? (
+          <DenseDataPage
+            denseRows={denseRows}
+            filter={pipelineFilter}
+            setFilter={setPipelineFilter}
+          />
+        ) : page === "wide" ? (
+          <WideTablePage
+            customerRows={customerRows}
+            filter={customerFilter}
+            setFilter={setCustomerFilter}
+          />
+        ) : page === "states" ? (
+          <StatesPage
+            auditRows={auditRows}
+            selectedAuditRow={selectedAuditRow}
+            setSelectedAuditRow={setSelectedAuditRow}
+          />
+        ) : (
+          <OverviewPage
+            density={density}
+            onDensityChange={setDensity}
+            onModelChange={handleModelChange}
+            filter={pipelineFilter}
+            rowHeight={rowHeight}
+            rows={pipelineRows}
+            selectedRow={selectedPipelineRow}
+            setFilter={setPipelineFilter}
+            setSelectedRow={setSelectedPipelineRow}
+          />
+        )}
+      </div>
+    </main>
   );
 }
 
@@ -510,30 +483,5 @@ function EmptyCard({
         <EmptyDescription>{children}</EmptyDescription>
       </EmptyHeader>
     </Empty>
-  );
-}
-
-function ThemeControl({
-  onChange,
-  value,
-}: {
-  onChange: (theme: UiThemeName) => void;
-  value: UiThemeName;
-}) {
-  return (
-    <div className="theme-control">
-      <Label htmlFor="example-theme">Theme</Label>
-      <NativeSelect
-        id="example-theme"
-        onChange={(event) => onChange(event.target.value as UiThemeName)}
-        value={value}
-      >
-        {exampleThemes.map((themeName) => (
-          <NativeSelectOption key={themeName} value={themeName}>
-            {themeLabels[themeName]}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
-    </div>
   );
 }
