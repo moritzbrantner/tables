@@ -35,7 +35,7 @@ import {
   type TableStateChange,
   type TableStateChangeType,
 } from "./data";
-import { getVariableVirtualRange, getFixedVirtualRange } from "./virtualization";
+import { createVariableVirtualLayout, getFixedVirtualRange } from "./virtualization";
 
 export type RowKey<TRow> = keyof TRow | ((row: TRow, rowIndex: number) => TableRowKey);
 
@@ -276,10 +276,11 @@ export function VirtualTable<TRow>({
     () => columnEntries.center.map((entry) => entry.width),
     [columnEntries.center],
   );
-  const centerColumnWidth = useMemo(
-    () => centerWidths.reduce((sum, width) => sum + width, 0),
+  const centerLayout = useMemo(
+    () => createVariableVirtualLayout(centerWidths),
     [centerWidths],
   );
+  const centerColumnWidth = centerLayout.totalSize;
   const rowRange = useMemo(
     () =>
       getFixedVirtualRange({
@@ -296,8 +297,7 @@ export function VirtualTable<TRow>({
   const columnRange = useMemo(
     () =>
       columnVirtualization
-        ? getVariableVirtualRange({
-            itemSizes: centerWidths,
+        ? centerLayout.virtualRange({
             overscan: columnOverscan,
             scrollOffset: centerScrollOffset,
             viewportSize: centerViewportWidth,
@@ -312,9 +312,9 @@ export function VirtualTable<TRow>({
           },
     [
       centerColumnWidth,
+      centerLayout,
       centerScrollOffset,
       centerViewportWidth,
-      centerWidths,
       columnEntries.center.length,
       columnOverscan,
       columnVirtualization,

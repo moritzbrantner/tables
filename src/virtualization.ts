@@ -22,6 +22,12 @@ export type VariableVirtualRangeOptions = {
   viewportSize: number;
 };
 
+export type VariableVirtualLayout = {
+  readonly length: number;
+  readonly totalSize: number;
+  virtualRange(options: Omit<VariableVirtualRangeOptions, "itemSizes">): VirtualRange;
+};
+
 export function getFixedVirtualRange({
   count,
   itemSize,
@@ -61,26 +67,44 @@ export function getVariableVirtualRange({
   scrollOffset,
   viewportSize,
 }: VariableVirtualRangeOptions): VirtualRange {
-  if (itemSizes.length === 0 || !isPositiveFinite(viewportSize)) {
-    return emptyVirtualRange();
-  }
+  return createVariableVirtualLayout(itemSizes).virtualRange({
+    overscan,
+    scrollOffset,
+    viewportSize,
+  });
+}
 
-  const safeOverscan = normalizeUnsignedInteger(overscan);
+export function createVariableVirtualLayout(
+  itemSizes: readonly number[],
+): VariableVirtualLayout {
+  const length = itemSizes.length;
   const offsets = getOffsets(itemSizes);
   const totalSize = offsets[offsets.length - 1] ?? 0;
-  const safeOffset = normalizeOffset(scrollOffset, totalSize);
-  const visibleStart = findIndexAtOffset(offsets, safeOffset);
-  const visibleEnd = findIndexAtOffset(offsets, safeOffset + viewportSize) + 1;
-  const startIndex = clamp(visibleStart - safeOverscan, 0, itemSizes.length);
-  const endIndex = clamp(visibleEnd + safeOverscan, startIndex, itemSizes.length);
 
   return {
-    endIndex,
-    offsetAfter: Math.max(0, totalSize - offsets[endIndex]),
-    offsetBefore: offsets[startIndex] ?? 0,
-    startIndex,
+    length,
     totalSize,
-    visibleCount: endIndex - startIndex,
+    virtualRange({ overscan = 1, scrollOffset, viewportSize }) {
+      if (length === 0 || !isPositiveFinite(viewportSize)) {
+        return emptyVirtualRange();
+      }
+
+      const safeOverscan = normalizeUnsignedInteger(overscan);
+      const safeOffset = normalizeOffset(scrollOffset, totalSize);
+      const visibleStart = findIndexAtOffset(offsets, safeOffset);
+      const visibleEnd = findIndexAtOffset(offsets, safeOffset + viewportSize) + 1;
+      const startIndex = clamp(visibleStart - safeOverscan, 0, length);
+      const endIndex = clamp(visibleEnd + safeOverscan, startIndex, length);
+
+      return {
+        endIndex,
+        offsetAfter: Math.max(0, totalSize - (offsets[endIndex] ?? totalSize)),
+        offsetBefore: offsets[startIndex] ?? 0,
+        startIndex,
+        totalSize,
+        visibleCount: endIndex - startIndex,
+      };
+    },
   };
 }
 
