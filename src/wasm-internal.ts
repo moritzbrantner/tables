@@ -182,7 +182,7 @@ function queryTableWithRust<TRow>(
       filters.push({
         caseSensitive: columnFilter.caseSensitive === true,
         columnIndex: entry.columnIndex,
-        operator: columnFilter.operator,
+        operator: normalizeNullFilterOperator(columnFilter),
         value,
       });
     }
@@ -269,6 +269,24 @@ function createSearch<TRow>(
     columnIndices,
     query,
   };
+}
+
+function normalizeNullFilterOperator(
+  filter: TableColumnFilter,
+): TableColumnFilter["operator"] {
+  if (filter.value != null) {
+    return filter.operator;
+  }
+
+  if (filter.operator === "equals") {
+    return "isNull";
+  }
+
+  if (filter.operator === "notEquals") {
+    return "isNotNull";
+  }
+
+  return filter.operator;
 }
 
 function prepareFilterValue(
