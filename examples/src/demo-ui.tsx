@@ -4,20 +4,12 @@ import type {
   HTMLAttributes,
   InputHTMLAttributes,
   LabelHTMLAttributes,
-  OptionHTMLAttributes,
   ReactElement,
   ReactNode,
-  SelectHTMLAttributes,
 } from "react";
 
 function cx(...values: Array<false | null | string | undefined>): string {
   return values.filter(Boolean).join(" ");
-}
-
-export type UiThemeName = "atlas" | "bobba" | "paper" | "pop" | "pulse" | "studio" | "zleek";
-
-export function UiTheme({ className, theme, ...props }: HTMLAttributes<HTMLDivElement> & { theme: UiThemeName }) {
-  return <div className={cx("demo-theme", className)} data-demo-theme={theme} {...props} />;
 }
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -135,14 +127,6 @@ export function MetricStrip({ className, items }: { className?: string; items: r
       ))}
     </dl>
   );
-}
-
-export function NativeSelect({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cx("demo-select", className)} {...props} />;
-}
-
-export function NativeSelectOption(props: OptionHTMLAttributes<HTMLOptionElement>) {
-  return <option {...props} />;
 }
 
 type ToggleGroupContextValue = {
