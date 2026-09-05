@@ -9,7 +9,6 @@ import {
 import {
   createTableWasmKernelFromModule,
   type TableWasmKernel,
-  type TableWasmVariableLayout,
 } from "./wasm-internal";
 
 export type { TableWasmKernel, TableWasmVariableLayout } from "./wasm-internal";
