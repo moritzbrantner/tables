@@ -101,7 +101,7 @@ describe.runIf(enabled)("tables Wasm parity", () => {
       active: boolean | null;
       id: string;
       name: string;
-      region: string;
+      region: string | null;
       score: number | null;
       tags: readonly string[];
     };
@@ -110,7 +110,7 @@ describe.runIf(enabled)("tables Wasm parity", () => {
       { active: true, id: "a", name: "Alpha", region: "Berlin", score: 20, tags: ["core"] },
       { active: false, id: "b", name: "Beta", region: "Boston", score: 10, tags: ["edge"] },
       { active: true, id: "c", name: "Äpfel", region: "München", score: 20, tags: ["core", "eu"] },
-      { active: null, id: "d", name: "Delta", region: "Tokyo", score: null, tags: [] },
+      { active: null, id: "d", name: "Delta", region: null, score: null, tags: [] },
     ];
     const columns: TableColumn<Row>[] = [
       { accessor: "id", header: "ID", id: "id", type: "string" },
@@ -137,6 +137,18 @@ describe.runIf(enabled)("tables Wasm parity", () => {
       },
       {
         filter: { columnFilters: [{ columnId: "score", operator: "isNull" }] },
+        sort: [],
+      },
+      {
+        filter: { columnFilters: [{ columnId: "active", operator: "in", value: [true, null] }] },
+        sort: [],
+      },
+      {
+        filter: { columnFilters: [{ columnId: "score", operator: "equals", value: null }] },
+        sort: [],
+      },
+      {
+        filter: { columnFilters: [{ columnId: "region", operator: "equals", value: null }] },
         sort: [],
       },
       {
