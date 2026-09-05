@@ -314,7 +314,11 @@ mod tests {
             for index in 0..count {
                 seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
                 let generated = ((seed >> 32) % 73) as f64;
-                sizes.push(if index % 11 == 0 { 0.0 } else { generated + 1.0 });
+                sizes.push(if index % 11 == 0 {
+                    0.0
+                } else {
+                    generated + 1.0
+                });
             }
 
             let layout = VariableLayout::new(&sizes);

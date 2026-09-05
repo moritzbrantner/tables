@@ -138,8 +138,7 @@ impl WasmTableIndex {
     /// row indices in final sorted/windowed order.
     #[wasm_bindgen]
     pub fn query(&self, query: JsValue) -> Result<Box<[u32]>, JsValue> {
-        let query: WasmTableQuery =
-            serde_wasm_bindgen::from_value(query).map_err(into_js_error)?;
+        let query: WasmTableQuery = serde_wasm_bindgen::from_value(query).map_err(into_js_error)?;
         let result = self.inner.query(&query.into_core());
         let mut packed = Vec::with_capacity(result.row_indices.len().saturating_add(1));
         packed.push(result.filtered_row_count.min(u32::MAX as usize) as u32);
@@ -172,9 +171,17 @@ struct WasmTableQuery {
 impl WasmTableQuery {
     fn into_core(self) -> TableQuery {
         TableQuery {
-            filters: self.filters.into_iter().map(WasmTableFilter::into_core).collect(),
+            filters: self
+                .filters
+                .into_iter()
+                .map(WasmTableFilter::into_core)
+                .collect(),
             search: self.search.map(WasmTableSearch::into_core),
-            sort: self.sort.into_iter().map(WasmTableSort::into_core).collect(),
+            sort: self
+                .sort
+                .into_iter()
+                .map(WasmTableSort::into_core)
+                .collect(),
             row_offset: self.row_offset,
             row_limit: self.row_limit,
         }

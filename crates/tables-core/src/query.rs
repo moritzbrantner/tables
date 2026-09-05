@@ -306,17 +306,25 @@ impl TableIndex {
                 values,
                 normalized_values,
                 validity,
-            } => string_value(values, normalized_values, validity, row_index, case_sensitive)
-                .map(str::to_owned),
+            } => string_value(
+                values,
+                normalized_values,
+                validity,
+                row_index,
+                case_sensitive,
+            )
+            .map(str::to_owned),
         }
     }
 
     fn compare_rows(&self, left: u32, right: u32, sort: &[TableSort]) -> Ordering {
         for rule in sort {
-            let ordering = self.columns.get(rule.column_index).map_or(
-                Ordering::Equal,
-                |column| compare_column_rows(column, left, right, *rule),
-            );
+            let ordering = self
+                .columns
+                .get(rule.column_index)
+                .map_or(Ordering::Equal, |column| {
+                    compare_column_rows(column, left, right, *rule)
+                });
             if ordering != Ordering::Equal {
                 return ordering;
             }
@@ -439,9 +447,9 @@ fn string_filter_matches(
                 include_null,
             } => match actual {
                 None => *include_null,
-                Some(actual) => values.iter().any(|candidate| {
-                    normalize_string(candidate, filter.case_sensitive) == actual
-                }),
+                Some(actual) => values
+                    .iter()
+                    .any(|candidate| normalize_string(candidate, filter.case_sensitive) == actual),
             },
             _ => false,
         },
