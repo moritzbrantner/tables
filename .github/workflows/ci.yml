@@ -4,9 +4,13 @@ on:
   pull_request:
   push:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -17,8 +21,19 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      - name: Setup Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install wasm-pack
+        run: if ! command -v wasm-pack; then cargo install wasm-pack --version 0.14.0 --locked; fi
+
       - name: Install
         run: bun install --frozen-lockfile
+
+      - name: Build Wasm
+        run: bun run build:wasm
 
       - name: Check types
         run: bun run check-types
@@ -26,11 +41,14 @@ jobs:
       - name: Test
         run: bun run test
 
+      - name: Test Wasm parity
+        run: bun run test:wasm-parity
+
       - name: Build
         run: bun run build
 
       - name: Check package
-        run: bunx publint --pack bun --strict
+        run: bun run pack:check
 
       - name: Build examples
         run: bun run build:examples

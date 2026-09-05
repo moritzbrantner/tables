@@ -2,8 +2,10 @@ coverage/
 dist/
 dist-examples/
 .vite/
+.artifacts/
 node_modules/
 playwright-report/
+src/wasm/generated/
 target/
 test-results/
 *.log
