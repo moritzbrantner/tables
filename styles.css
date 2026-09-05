@@ -112,11 +112,8 @@
   outline: none;
 }
 
-.mb-table__row--selected {
-  background: #dff1ef;
-}
-
-.mb-table--striped .mb-table__row--selected {
+.mb-table__row--selected,
+.mb-table--striped .mb-table__row:nth-child(even).mb-table__row--selected {
   background: #dff1ef;
 }
 

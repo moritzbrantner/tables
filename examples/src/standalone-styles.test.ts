@@ -35,4 +35,10 @@ describe("standalone Pages styling", () => {
       ".mb-table__column-menu {\n  background: var(--demo-bg);\n  color: var(--demo-fg);\n}",
     );
   });
+
+  test("enables multi-row selection without zebra backgrounds", () => {
+    expect(appSource.match(/selectionMode="multiple"/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(pageStyles).toContain("--mb-table-row-bg: var(--demo-bg);");
+    expect(pageStyles).toContain("--mb-table-row-alt-bg: var(--demo-bg);");
+  });
 });

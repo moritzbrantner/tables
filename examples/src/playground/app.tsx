@@ -186,7 +186,7 @@ function OverviewPage({
       <div className="split-layout">
         <TablePanel
           title="Pipeline overview"
-          description="A 50,000-row sales pipeline with typed columns, virtual rows, filtering, and sortable headers."
+          description="A 50,000-row sales pipeline with typed columns, virtual rows, filtering, sortable headers, and multi-row selection."
         >
           <VirtualTable
             ariaLabel="Pipeline overview"
@@ -200,12 +200,15 @@ function OverviewPage({
             rowHeight={rowHeight}
             rowKey="id"
             rows={rows}
-            selectionMode="single"
+            selectionMode="multiple"
             state={{ filter }}
           />
         </TablePanel>
 
-        <TablePanel title="Selected row" description="Click a row to inspect the current record.">
+        <TablePanel
+          title="Selected row"
+          description="Click to select. Ctrl/Cmd-click toggles rows; Shift-click selects a range."
+        >
           <PipelineDetails row={selectedRow} />
         </TablePanel>
       </div>
@@ -236,7 +239,7 @@ function DenseDataPage({
       </Toolbar>
       <TablePanel
         title="Dense operational data"
-        description="A compact 100,000-row table for scanning, filtering, and sorting high-volume records."
+        description="A compact 100,000-row table for scanning, filtering, sorting, and multi-row selection."
       >
         <DataTable
           ariaLabel="Dense pipeline table"
@@ -248,6 +251,7 @@ function DenseDataPage({
           onStateChange={({ state }) => setFilter(state.filter)}
           rowKey="id"
           rows={denseRows}
+          selectionMode="multiple"
           state={{ filter }}
         />
       </TablePanel>
@@ -295,6 +299,7 @@ function WideTablePage({
           onStateChange={({ state }) => setFilter(state.filter)}
           rowKey="id"
           rows={customerRows}
+          selectionMode="multiple"
           state={{ filter }}
         />
       </TablePanel>
