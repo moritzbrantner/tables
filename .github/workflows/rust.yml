@@ -88,30 +88,22 @@ jobs:
           rustup toolchain install stable --profile minimal --component clippy,rustfmt
           rustup default stable
 
-      - name: Generate adapter lockfile
-        run: cargo generate-lockfile --manifest-path crates/tables-wasm/Cargo.toml
-
-      - name: Upload adapter lockfile
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: tables-wasm-lock-${{ github.sha }}
-          path: crates/tables-wasm/Cargo.lock
-          if-no-files-found: error
-          retention-days: 7
+      - name: Verify adapter lockfile
+        run: cargo metadata --locked --manifest-path crates/tables-wasm/Cargo.toml --no-deps --format-version 1 > /dev/null
 
       - name: Check adapter formatting
         run: cargo fmt --manifest-path crates/tables-wasm/Cargo.toml -- --check
 
       - name: Lint adapter
-        run: cargo clippy --manifest-path crates/tables-wasm/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --locked --manifest-path crates/tables-wasm/Cargo.toml --all-targets -- -D warnings
 
       - name: Test adapter
-        run: cargo test --manifest-path crates/tables-wasm/Cargo.toml
+        run: cargo test --locked --manifest-path crates/tables-wasm/Cargo.toml
 
       - name: Check adapter documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --manifest-path crates/tables-wasm/Cargo.toml --no-deps
+        run: cargo doc --locked --manifest-path crates/tables-wasm/Cargo.toml --no-deps
 
       - name: Install wasm-pack
         run: if ! command -v wasm-pack; then cargo install wasm-pack --version 0.14.0 --locked; fi

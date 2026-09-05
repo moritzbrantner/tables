@@ -118,6 +118,9 @@ mod tests {
 
         assert_eq!(layout.len(), 4);
         assert_eq!(layout.total_size(), 280.0);
-        assert_eq!(layout.virtual_range(1, 70.0, 120.0).as_ref(), [0.0, 4.0, 0.0, 0.0, 280.0, 4.0]);
+        assert_eq!(
+            layout.virtual_range(1, 70.0, 120.0).as_ref(),
+            [0.0, 4.0, 0.0, 0.0, 280.0, 4.0]
+        );
     }
 }
