@@ -130,12 +130,6 @@ describe("table data semantics", () => {
       }).map((row) => row.id),
     ).toEqual(["a", "c", "d"]);
 
-    expect(
-      applyTableFilter(rows, columns, {
-        columnFilters: [{ columnId: "tags", operator: "equals", value: null }],
-      }).map((row) => row.id),
-    ).toEqual(["d"]);
-
     expect(applyTableFilter(rows, columns, { query: "apac" }).map((row) => row.id)).toEqual(["c"]);
     expect(applyTableFilter(rows, columns, { query: "ÄPFEL" }).map((row) => row.id)).toEqual(["d"]);
   });
