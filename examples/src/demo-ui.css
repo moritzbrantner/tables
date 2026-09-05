@@ -1,28 +1,14 @@
-.demo-theme {
+:root {
   --demo-bg: #ffffff;
   --demo-fg: #172033;
   --demo-muted: #667085;
   --demo-border: #dfe3ea;
   --demo-surface: #f7f8fa;
   --demo-accent: #2458d3;
-  color: var(--demo-fg);
-}
-
-.demo-theme[data-demo-theme="paper"] {
-  --demo-bg: #fffdf8;
-  --demo-surface: #f6f1e6;
-}
-
-.demo-theme[data-demo-theme="pop"] {
-  --demo-accent: #7c3aed;
-}
-
-.demo-theme[data-demo-theme="pulse"] {
-  --demo-accent: #be123c;
-}
-
-.demo-theme[data-demo-theme="zleek"] {
-  --demo-accent: #0f766e;
+  --demo-accent-foreground: #ffffff;
+  --demo-radius: 0.625rem;
+  --demo-shadow: 0 12px 32px rgb(23 32 51 / 10%);
+  --demo-focus-ring: rgb(36 88 211 / 24%);
 }
 
 .demo-button,
