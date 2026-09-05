@@ -144,7 +144,7 @@ select {
   --mb-table-cell-border: #edf1f6;
   --mb-table-header-bg: var(--demo-surface);
   --mb-table-row-bg: var(--demo-bg);
-  --mb-table-row-alt-bg: #fbfcfe;
+  --mb-table-row-alt-bg: var(--demo-bg);
   --mb-table-row-hover-bg: #eef4ff;
   --mb-table-text: var(--demo-fg);
   --mb-table-muted: var(--demo-muted);
