@@ -260,7 +260,7 @@ enum WasmTableFilterValue {
     },
     Numbers {
         values: Vec<f64>,
-        #[serde(default)]
+        #[serde(default, rename = "includeNull")]
         include_null: bool,
     },
     Boolean {
@@ -268,7 +268,7 @@ enum WasmTableFilterValue {
     },
     Booleans {
         values: Vec<bool>,
-        #[serde(default)]
+        #[serde(default, rename = "includeNull")]
         include_null: bool,
     },
     String {
@@ -276,7 +276,7 @@ enum WasmTableFilterValue {
     },
     Strings {
         values: Vec<String>,
-        #[serde(default)]
+        #[serde(default, rename = "includeNull")]
         include_null: bool,
     },
 }
