@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/tables-core"]
+exclude = ["crates/tables-wasm"]
 resolver = "2"
 
 [workspace.package]

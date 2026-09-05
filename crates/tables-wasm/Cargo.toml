@@ -1,0 +1,26 @@
+[package]
+name = "tables-wasm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/moritzbrantner/tables"
+description = "Thin WebAssembly adapter for tables-core virtualization kernels."
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tables-core = { path = "../tables-core" }
+wasm-bindgen = "=0.2.128"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true

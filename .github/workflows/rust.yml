@@ -8,6 +8,12 @@ on:
       - "Cargo.toml"
       - "crates/**"
       - "docs/rust-foundation.md"
+      - "package.json"
+      - "scripts/check-wasm-package.mjs"
+      - "scripts/copy-wasm.mjs"
+      - "src/virtualization.ts"
+      - "src/virtualization.test.ts"
+      - "src/wasm*.ts"
   push:
     branches: [main]
     paths:
@@ -16,6 +22,12 @@ on:
       - "Cargo.toml"
       - "crates/**"
       - "docs/rust-foundation.md"
+      - "package.json"
+      - "scripts/check-wasm-package.mjs"
+      - "scripts/copy-wasm.mjs"
+      - "src/virtualization.ts"
+      - "src/virtualization.test.ts"
+      - "src/wasm*.ts"
   workflow_dispatch:
 
 permissions:
@@ -56,6 +68,60 @@ jobs:
 
       - name: Compile benchmark targets
         run: cargo bench --locked --workspace --no-run
+
+  wasm:
+    name: Wasm parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+
+      - name: Verify adapter lockfile
+        run: cargo metadata --locked --manifest-path crates/tables-wasm/Cargo.toml --no-deps --format-version 1 > /dev/null
+
+      - name: Check adapter formatting
+        run: cargo fmt --manifest-path crates/tables-wasm/Cargo.toml -- --check
+
+      - name: Lint adapter
+        run: cargo clippy --locked --manifest-path crates/tables-wasm/Cargo.toml --all-targets -- -D warnings
+
+      - name: Test adapter
+        run: cargo test --locked --manifest-path crates/tables-wasm/Cargo.toml
+
+      - name: Check adapter documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --manifest-path crates/tables-wasm/Cargo.toml --no-deps
+
+      - name: Install wasm-pack
+        run: if ! command -v wasm-pack; then cargo install wasm-pack --version 0.14.0 --locked; fi
+
+      - name: Install JavaScript dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test TypeScript/Rust/Wasm parity
+        run: bun run test:wasm-parity
+
+      - name: Build browser Wasm
+        run: bun run build:wasm
+
+      - name: Build package with Wasm artifacts
+        run: bun run build
+
+      - name: Check packaged Wasm artifacts
+        run: node ./scripts/check-wasm-package.mjs
 
   benchmark:
     name: Benchmark evidence

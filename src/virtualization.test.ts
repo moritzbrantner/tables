@@ -23,14 +23,41 @@ describe("getFixedVirtualRange", () => {
   });
 
   it("returns an empty range for invalid dimensions", () => {
+    for (const itemSize of [0, Number.POSITIVE_INFINITY, Number.NaN]) {
+      expect(
+        getFixedVirtualRange({
+          count: 10,
+          itemSize,
+          scrollOffset: 0,
+          viewportSize: 100,
+        }),
+      ).toMatchObject({ endIndex: 0, startIndex: 0, visibleCount: 0 });
+    }
+
     expect(
       getFixedVirtualRange({
         count: 10,
-        itemSize: 0,
+        itemSize: 20,
         scrollOffset: 0,
-        viewportSize: 100,
+        viewportSize: Number.POSITIVE_INFINITY,
       }),
     ).toMatchObject({ endIndex: 0, startIndex: 0, visibleCount: 0 });
+  });
+
+  it("normalizes non-finite scroll offsets like the Rust core", () => {
+    const base = {
+      count: 10,
+      itemSize: 20,
+      overscan: 0,
+      viewportSize: 40,
+    };
+
+    expect(getFixedVirtualRange({ ...base, scrollOffset: Number.NaN })).toEqual(
+      getFixedVirtualRange({ ...base, scrollOffset: 0 }),
+    );
+    expect(getFixedVirtualRange({ ...base, scrollOffset: Number.POSITIVE_INFINITY })).toEqual(
+      getFixedVirtualRange({ ...base, scrollOffset: 200 }),
+    );
   });
 
   it("preserves range and spacer invariants across boundary offsets", () => {
@@ -117,8 +144,32 @@ describe("getVariableVirtualRange", () => {
     });
   });
 
-  it("treats negative item sizes as zero-width entries", () => {
-    expect(getOffsets([40, -10, 20])).toEqual([0, 40, 40, 60]);
+  it("normalizes malformed item sizes to zero-width entries", () => {
+    expect(getOffsets([40, -10, Number.NaN, Number.POSITIVE_INFINITY, 20])).toEqual([
+      0,
+      40,
+      40,
+      40,
+      40,
+      60,
+    ]);
+  });
+
+  it("returns an empty range for a non-finite viewport", () => {
+    expect(
+      getVariableVirtualRange({
+        itemSizes: [40, 60, 100],
+        scrollOffset: 0,
+        viewportSize: Number.POSITIVE_INFINITY,
+      }),
+    ).toEqual({
+      endIndex: 0,
+      offsetAfter: 0,
+      offsetBefore: 0,
+      startIndex: 0,
+      totalSize: 0,
+      visibleCount: 0,
+    });
   });
 
   it("preserves range and spacer invariants for varied item sizes", () => {

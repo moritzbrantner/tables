@@ -55,6 +55,10 @@
       "types": "./dist/virtualization.d.ts",
       "import": "./dist/virtualization.js"
     },
+    "./wasm": {
+      "types": "./dist/wasm.d.ts",
+      "import": "./dist/wasm.js"
+    },
     "./styles.css": "./styles.css",
     "./table.css": "./table.css",
     "./package.json": "./package.json"
@@ -88,16 +92,19 @@
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/table.tsx src/react.tsx src/data.ts src/virtualization.ts --format esm --dts --clean --out-dir dist",
+    "build": "tsup src/index.ts src/table.tsx src/react.tsx src/data.ts src/virtualization.ts src/wasm.ts --format esm --dts --clean --out-dir dist && node ./scripts/copy-wasm.mjs",
     "build:examples": "vite build --outDir ../dist-examples --emptyOutDir",
     "build:examples:pages": "vite build --base=/tables/ --outDir ../dist-examples --emptyOutDir",
+    "build:wasm": "wasm-pack build crates/tables-wasm --target web --release --out-dir ../../src/wasm/generated --out-name tables_wasm",
+    "build:wasm:node": "wasm-pack build crates/tables-wasm --target nodejs --dev --out-dir ../../.artifacts/tables-wasm-node --out-name tables_wasm",
     "check:pages": "bun run check-types && bun run test && bun run build:examples:pages",
     "check-types": "tsc --noEmit",
     "dev": "vite --host 0.0.0.0",
-    "pack:check": "bun run build && publint --pack bun --strict",
-    "prepack": "bun run build",
+    "pack:check": "bun run build && node ./scripts/check-wasm-package.mjs && publint --pack bun --strict",
+    "prepack": "bun run build:wasm && bun run build",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "verify": "bun run check-types && bun run test && bun run build && bun run pack:check"
+    "test:wasm-parity": "bun run build:wasm:node && TABLES_WASM_PARITY=1 vitest run src/wasm-parity.test.ts",
+    "verify": "bun run build:wasm && bun run check-types && bun run test && bun run test:wasm-parity && bun run build && bun run pack:check"
   }
 }
