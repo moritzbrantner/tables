@@ -46,6 +46,12 @@ impl WasmVariableLayout {
         }
     }
 
+    /// Returns whether this layout has no items.
+    #[wasm_bindgen(getter, js_name = isEmpty)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
     /// Returns the number of items in this layout.
     #[wasm_bindgen(getter, js_name = length)]
     pub fn len(&self) -> usize {
@@ -116,6 +122,7 @@ mod tests {
     fn persistent_layout_reuses_core_geometry() {
         let layout = WasmVariableLayout::new(&[40.0, 60.0, 100.0, 80.0]);
 
+        assert!(!layout.is_empty());
         assert_eq!(layout.len(), 4);
         assert_eq!(layout.total_size(), 280.0);
         assert_eq!(
