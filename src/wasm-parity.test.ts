@@ -1,7 +1,14 @@
-import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, test } from "vitest";
 
+import {
+  createTableModel,
+  type TableColumn,
+  type TableFilter,
+  type TableSortState,
+} from "./data";
+import { setTableQueryKernel } from "./query-kernel";
 import { getFixedVirtualRange, getVariableVirtualRange } from "./virtualization";
 import {
   createTableWasmKernelFromModule,
@@ -14,6 +21,7 @@ describe.runIf(enabled)("tables Wasm parity", () => {
   let kernel: TableWasmKernel;
 
   beforeAll(async () => {
+    setTableQueryKernel(null);
     const moduleUrl = pathToFileURL(resolve(".artifacts/tables-wasm-node/tables_wasm.js")).href;
     kernel = createTableWasmKernelFromModule(await import(moduleUrl));
   });
@@ -86,5 +94,105 @@ describe.runIf(enabled)("tables Wasm parity", () => {
 
       layout.dispose();
     }
+  });
+
+  test("matches direct Rust filtering, search, null, membership, and multi-sort semantics", () => {
+    type Row = {
+      active: boolean | null;
+      id: string;
+      name: string;
+      region: string | null;
+      score: number | null;
+      tags: readonly string[];
+    };
+
+    const rows: Row[] = [
+      { active: true, id: "a", name: "Alpha", region: "Berlin", score: 20, tags: ["core"] },
+      { active: false, id: "b", name: "Beta", region: "Boston", score: 10, tags: ["edge"] },
+      { active: true, id: "c", name: "Äpfel", region: "München", score: 20, tags: ["core", "eu"] },
+      { active: null, id: "d", name: "Delta", region: null, score: null, tags: [] },
+    ];
+    const columns: TableColumn<Row>[] = [
+      { accessor: "id", header: "ID", id: "id", type: "string" },
+      { accessor: "name", header: "Name", id: "name", type: "string" },
+      { accessor: "region", header: "Region", id: "region", type: "string" },
+      { accessor: "score", header: "Score", id: "score", type: "number" },
+      { accessor: "active", header: "Active", id: "active", type: "boolean" },
+      { accessor: "tags", header: "Tags", id: "tags", type: "json" },
+    ];
+    const scenarios: Array<{ filter: TableFilter<Row> | null; sort: TableSortState }> = [
+      {
+        filter: {
+          columnFilters: [{ columnId: "active", operator: "equals", value: true }],
+          query: "core",
+        },
+        sort: [{ columnId: "score", direction: "desc" }],
+      },
+      {
+        filter: {
+          columnFilters: [{ columnId: "region", operator: "in", value: ["Berlin", "München"] }],
+          query: "ÄPFEL",
+        },
+        sort: [],
+      },
+      {
+        filter: { columnFilters: [{ columnId: "score", operator: "isNull" }] },
+        sort: [],
+      },
+      {
+        filter: { columnFilters: [{ columnId: "active", operator: "in", value: [true, null] }] },
+        sort: [],
+      },
+      {
+        filter: { columnFilters: [{ columnId: "score", operator: "equals", value: null }] },
+        sort: [],
+      },
+      {
+        filter: { columnFilters: [{ columnId: "region", operator: "equals", value: null }] },
+        sort: [],
+      },
+      {
+        filter: null,
+        sort: [
+          { columnId: "score", direction: "asc" },
+          { columnId: "region", direction: "asc" },
+        ],
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      setTableQueryKernel(null);
+      const expected = createTableModel({ columns, filter: scenario.filter, rows, sort: scenario.sort });
+      const expectedIndices = expected.rows.map((row) => rows.indexOf(row));
+      const actual = kernel.queryTable(rows, columns, scenario.filter, scenario.sort);
+
+      expect(actual.filteredRowCount).toBe(expected.filteredRowCount);
+      expect(actual.sourceIndices).toEqual(expectedIndices);
+    }
+  });
+
+  test("matches sortAccessor without moving callbacks into Rust", () => {
+    const rows = [
+      { id: "a", score: 10 },
+      { id: "b", score: 30 },
+      { id: "c", score: 20 },
+    ];
+    const columns: TableColumn<(typeof rows)[number]>[] = [
+      { accessor: "id", header: "ID", id: "id", type: "string" },
+      {
+        accessor: "score",
+        header: "Score",
+        id: "score",
+        sortAccessor: (row) => -row.score,
+        type: "number",
+      },
+    ];
+    const sort = [{ columnId: "score", direction: "asc" }] as const;
+
+    setTableQueryKernel(null);
+    const expected = createTableModel({ columns, rows, sort });
+    const actual = kernel.queryTable(rows, columns, null, sort);
+
+    expect(actual.sourceIndices).toEqual(expected.rows.map((row) => rows.indexOf(row)));
   });
 });

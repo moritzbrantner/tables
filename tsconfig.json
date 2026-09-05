@@ -9,7 +9,7 @@
     "paths": {
       "@moritzbrantner/tables": ["./src/index.ts"],
       "@moritzbrantner/tables/data": ["./src/data.ts"],
-      "@moritzbrantner/tables/react": ["./src/react.tsx"],
+      "@moritzbrantner/tables/react": ["./src/react-rust.tsx"],
       "@moritzbrantner/tables/virtualization": ["./src/virtualization.ts"]
     },
     "skipLibCheck": true,
