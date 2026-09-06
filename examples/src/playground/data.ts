@@ -14,19 +14,19 @@ const accounts = [
   "Summit Health",
   "Vector Motors",
 ];
-const owners = ["A. Weber", "C. Novak", "M. Klein", "S. Fischer", "T. Hansen", "L. Brandt"];
-const customerSuccess = ["N. Kaya", "P. Rossi", "R. Moore", "V. Chen", "Y. Singh"];
-const regions = ["DACH", "Benelux", "Nordics", "Iberia", "North America", "APAC"];
-const countries = ["Germany", "Netherlands", "Sweden", "Spain", "United States", "Singapore"];
-const stages: PipelineRow["stage"][] = ["Proposal", "Negotiation", "Renewal", "Closed"];
-const healthValues: PipelineRow["health"][] = ["Healthy", "Watch", "At risk"];
-const segments: PipelineRow["segment"][] = ["Startup", "Commercial", "Mid-market", "Enterprise"];
-const plans: CustomerRow["plan"][] = ["Starter", "Business", "Scale", "Enterprise"];
-const statuses: CustomerRow["status"][] = ["Active", "Expanding", "Onboarding", "Paused"];
-const billingCycles: CustomerRow["billingCycle"][] = ["Monthly", "Quarterly", "Annual"];
-const productFitValues: CustomerRow["productFit"][] = ["High", "Medium", "Low"];
-const auditActions: AuditRow["action"][] = ["Imported", "Reviewed", "Approved", "Exported", "Flagged"];
-const auditStatuses: AuditRow["status"][] = ["Succeeded", "Queued", "Failed"];
+export const owners = ["A. Weber", "C. Novak", "M. Klein", "S. Fischer", "T. Hansen", "L. Brandt"];
+export const customerSuccess = ["N. Kaya", "P. Rossi", "R. Moore", "V. Chen", "Y. Singh"];
+export const regions = ["DACH", "Benelux", "Nordics", "Iberia", "North America", "APAC"];
+export const countries = ["Germany", "Netherlands", "Sweden", "Spain", "United States", "Singapore"];
+export const stages: PipelineRow["stage"][] = ["Proposal", "Negotiation", "Renewal", "Closed"];
+export const healthValues: PipelineRow["health"][] = ["Healthy", "Watch", "At risk"];
+export const segments: PipelineRow["segment"][] = ["Startup", "Commercial", "Mid-market", "Enterprise"];
+export const plans: CustomerRow["plan"][] = ["Starter", "Business", "Scale", "Enterprise"];
+export const statuses: CustomerRow["status"][] = ["Active", "Expanding", "Onboarding", "Paused"];
+export const billingCycles: CustomerRow["billingCycle"][] = ["Monthly", "Quarterly", "Annual"];
+export const productFitValues: CustomerRow["productFit"][] = ["High", "Medium", "Low"];
+export const auditActions: AuditRow["action"][] = ["Imported", "Reviewed", "Approved", "Exported", "Flagged"];
+export const auditStatuses: AuditRow["status"][] = ["Succeeded", "Queued", "Failed"];
 
 export function createPipelineRows(count: number): PipelineRow[] {
   return Array.from({ length: count }, (_, index) => {

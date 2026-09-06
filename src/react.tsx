@@ -913,13 +913,15 @@ function ColumnMenu<TRow>({
   y: number;
 }) {
   const columnType = resolveColumnFilterType(column, rows);
+  const filterOptions = columnType === "string" ? column.filterOptions : undefined;
   const activeColumnFilter = activeFilter?.columnFilters?.find(
     (filter) => filter.columnId === column.id,
   );
+  const categorical = Boolean(filterOptions?.length);
   const [draft, setDraft] = useState<ColumnFilterDraft>(() =>
-    createInitialColumnFilterDraft(columnType, activeColumnFilter),
+    createInitialColumnFilterDraft(columnType, activeColumnFilter, categorical),
   );
-  const operators = getFilterOperators(columnType);
+  const operators = getFilterOperators(columnType, categorical);
   const canApplyFilter = isColumnFilterDraftValid(columnType, draft);
   const showSort = menuOptions.sort && column.sortable;
   const showFilter = menuOptions.filter && column.filterable !== false;
@@ -1010,7 +1012,7 @@ function ColumnMenu<TRow>({
             </select>
           </label>
 
-          {renderFilterValueControl(columnType, draft, updateDraft)}
+          {renderFilterValueControl(columnType, filterOptions, draft, updateDraft)}
 
           <div className="mb-table__column-menu-actions">
             <button
@@ -1080,11 +1082,31 @@ function useElementSize(ref: RefObject<HTMLElement | null>): Size {
 
 function renderFilterValueControl(
   columnType: TableColumnType,
+  filterOptions: readonly string[] | undefined,
   draft: ColumnFilterDraft,
   updateDraft: (updates: Partial<ColumnFilterDraft>) => void,
 ) {
   if (!filterOperatorNeedsValue(draft.operator)) {
     return null;
+  }
+
+  if (filterOptions?.length) {
+    return (
+      <label className="mb-table__column-menu-field">
+        <span>Value</span>
+        <select
+          onChange={(event) => updateDraft({ value: event.target.value })}
+          value={draft.value}
+        >
+          <option value="">Select value</option>
+          {filterOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
   }
 
   if (columnType === "boolean") {
@@ -1301,10 +1323,14 @@ function resolveColumnFilterType<TRow>(
 function createInitialColumnFilterDraft(
   columnType: TableColumnType,
   filter: TableColumnFilter | undefined,
+  categorical = false,
 ): ColumnFilterDraft {
+  const operators = getFilterOperators(columnType, categorical);
+  const defaultOperator = getDefaultFilterOperator(columnType, categorical);
+
   return {
     booleanValue: typeof filter?.value === "boolean" && !filter.value ? "false" : "true",
-    operator: filter?.operator ?? getDefaultFilterOperator(columnType),
+    operator: filter && operators.includes(filter.operator) ? filter.operator : defaultOperator,
     value: filterValueToDraftString(filter?.value, 0),
     valueEnd: filterValueToDraftString(filter?.value, 1),
   };
@@ -1327,7 +1353,14 @@ function filterValueToDraftString(
   return "";
 }
 
-function getDefaultFilterOperator(columnType: TableColumnType): TableFilterOperator {
+function getDefaultFilterOperator(
+  columnType: TableColumnType,
+  categorical = false,
+): TableFilterOperator {
+  if (categorical) {
+    return "equals";
+  }
+
   if (columnType === "date") {
     return "gte";
   }
@@ -1339,7 +1372,14 @@ function getDefaultFilterOperator(columnType: TableColumnType): TableFilterOpera
   return "contains";
 }
 
-function getFilterOperators(columnType: TableColumnType): TableFilterOperator[] {
+function getFilterOperators(
+  columnType: TableColumnType,
+  categorical = false,
+): TableFilterOperator[] {
+  if (categorical) {
+    return ["equals", "notEquals", "isNull", "isNotNull"];
+  }
+
   if (columnType === "boolean") {
     return ["equals", "notEquals", "isNull", "isNotNull"];
   }

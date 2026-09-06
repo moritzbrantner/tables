@@ -25,6 +25,7 @@ import {
   VirtualTable,
   type TableFilter,
   type TableModel,
+  type TableRowKey,
 } from "@moritzbrantner/tables";
 import "../../../styles.css";
 
@@ -56,11 +57,23 @@ export function App() {
     query: "",
   });
   const [density, setDensity] = useState<TableDensity>("comfortable");
-  const [selectedPipelineRow, setSelectedPipelineRow] = useState<PipelineRow | null>(
-    pipelineRows[0] ?? null,
+  const [selectedPipelineRowKeys, setSelectedPipelineRowKeys] = useState<readonly TableRowKey[]>(
+    [],
   );
   const [selectedAuditRow, setSelectedAuditRow] = useState<AuditRow | null>(auditRows[0] ?? null);
   const [visibleRows, setVisibleRows] = useState(pipelineRows.length);
+  const pipelineRowsById = useMemo(
+    () => new Map(pipelineRows.map((row) => [row.id, row])),
+    [pipelineRows],
+  );
+  const selectedPipelineRows = useMemo(
+    () =>
+      selectedPipelineRowKeys.flatMap((key) => {
+        const row = pipelineRowsById.get(String(key));
+        return row ? [row] : [];
+      }),
+    [pipelineRowsById, selectedPipelineRowKeys],
+  );
   const rowHeight = density === "compact" ? 36 : 44;
   const handleModelChange = useCallback((model: TableModel<PipelineRow>) => {
     setVisibleRows(model.rows.length);
@@ -130,14 +143,15 @@ export function App() {
         ) : (
           <OverviewPage
             density={density}
+            filter={pipelineFilter}
             onDensityChange={setDensity}
             onModelChange={handleModelChange}
-            filter={pipelineFilter}
             rowHeight={rowHeight}
             rows={pipelineRows}
-            selectedRow={selectedPipelineRow}
+            selectedRowKeys={selectedPipelineRowKeys}
+            selectedRows={selectedPipelineRows}
             setFilter={setPipelineFilter}
-            setSelectedRow={setSelectedPipelineRow}
+            setSelectedRowKeys={setSelectedPipelineRowKeys}
           />
         )}
       </div>
@@ -152,9 +166,10 @@ function OverviewPage({
   onModelChange,
   rowHeight,
   rows,
-  selectedRow,
+  selectedRowKeys,
+  selectedRows,
   setFilter,
-  setSelectedRow,
+  setSelectedRowKeys,
 }: {
   density: TableDensity;
   filter: TableFilter<PipelineRow> | null;
@@ -162,9 +177,10 @@ function OverviewPage({
   onModelChange: (model: TableModel<PipelineRow>) => void;
   rowHeight: number;
   rows: PipelineRow[];
-  selectedRow: PipelineRow | null;
+  selectedRowKeys: readonly TableRowKey[];
+  selectedRows: readonly PipelineRow[];
   setFilter: (filter: TableFilter<PipelineRow> | null) => void;
-  setSelectedRow: (row: PipelineRow) => void;
+  setSelectedRowKeys: (keys: readonly TableRowKey[]) => void;
 }) {
   return (
     <>
@@ -195,21 +211,27 @@ function OverviewPage({
             columns={pipelineColumns}
             height="min(620px, calc(100vh - 270px))"
             onModelChange={onModelChange}
-            onRowClick={setSelectedRow}
-            onStateChange={({ state }) => setFilter(state.filter)}
+            onStateChange={({ state, type }) => {
+              if (type === "filter") {
+                setFilter(state.filter);
+              }
+              if (type === "selection") {
+                setSelectedRowKeys(state.selection.selectedRowKeys);
+              }
+            }}
             rowHeight={rowHeight}
             rowKey="id"
             rows={rows}
             selectionMode="multiple"
-            state={{ filter }}
+            state={{ filter, selection: { selectedRowKeys } }}
           />
         </TablePanel>
 
         <TablePanel
-          title="Selected row"
+          title="Selected rows"
           description="Click to select. Ctrl/Cmd-click toggles rows; Shift-click selects a range."
         >
-          <PipelineDetails row={selectedRow} />
+          <PipelineDetails rows={selectedRows} />
         </TablePanel>
       </div>
     </>
@@ -433,20 +455,65 @@ function DensityControl({
   );
 }
 
-function PipelineDetails({ row }: { row: PipelineRow | null }) {
-  if (!row) {
-    return <EmptyCard>No row selected.</EmptyCard>;
+function PipelineDetails({ rows }: { rows: readonly PipelineRow[] }) {
+  if (rows.length === 0) {
+    return <EmptyCard>No rows selected.</EmptyCard>;
   }
 
+  const selectionLabel = `${rows.length.toLocaleString("en-US")} ${rows.length === 1 ? "row" : "rows"} selected`;
+  const row = rows.length === 1 ? rows[0] : null;
+
+  if (row) {
+    return (
+      <div className="selection-details">
+        <p aria-live="polite" className="selection-count">
+          {selectionLabel}
+        </p>
+        <DescriptionList className="detail-list">
+          <Detail label="Account" value={row.account} />
+          <Detail label="Owner" value={row.owner} />
+          <Detail label="Stage" value={row.stage} />
+          <Detail label="Amount" value={formatCurrency(row.amount)} />
+          <Detail label="Probability" value={formatPercent(row.probability)} />
+          <Detail label="Renewal" value={formatDate(row.renewalDate)} />
+        </DescriptionList>
+      </div>
+    );
+  }
+
+  const totalAmount = rows.reduce((sum, selectedRow) => sum + selectedRow.amount, 0);
+  const averageProbability =
+    rows.reduce((sum, selectedRow) => sum + selectedRow.probability, 0) / rows.length;
+  const visibleSelectedRows = rows.slice(0, 20);
+
   return (
-    <DescriptionList className="detail-list">
-      <Detail label="Account" value={row.account} />
-      <Detail label="Owner" value={row.owner} />
-      <Detail label="Stage" value={row.stage} />
-      <Detail label="Amount" value={formatCurrency(row.amount)} />
-      <Detail label="Probability" value={formatPercent(row.probability)} />
-      <Detail label="Renewal" value={formatDate(row.renewalDate)} />
-    </DescriptionList>
+    <div className="selection-details">
+      <p aria-live="polite" className="selection-count">
+        {selectionLabel}
+      </p>
+      <DescriptionList className="detail-list selection-summary">
+        <Detail label="Total amount" value={formatCurrency(totalAmount)} />
+        <Detail label="Average probability" value={formatPercent(averageProbability)} />
+      </DescriptionList>
+      <ul aria-label="Selected pipeline rows" className="selected-row-list">
+        {visibleSelectedRows.map((selectedRow) => (
+          <li className="selected-row-item" key={selectedRow.id}>
+            <strong>{selectedRow.account}</strong>
+            <span>
+              {selectedRow.owner} · {selectedRow.stage}
+            </span>
+            <span>
+              {formatCurrency(selectedRow.amount)} · {formatPercent(selectedRow.probability)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {rows.length > visibleSelectedRows.length ? (
+        <p className="selection-overflow">
+          Showing the first {visibleSelectedRows.length.toLocaleString("en-US")} selected rows.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
