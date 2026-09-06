@@ -121,6 +121,7 @@
 
 .mb-table__row--selectable {
   cursor: pointer;
+  user-select: none;
 }
 
 .mb-table__sort-button {
