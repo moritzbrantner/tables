@@ -16,6 +16,14 @@ test("selects ranges with Shift and toggles rows with Ctrl", async ({ page }) =>
   const secondBackground = await second.evaluate((row) => getComputedStyle(row).backgroundColor);
   expect(secondBackground).toBe(firstBackground);
 
+  await first.hover();
+  const oddHoverBackground = await first.evaluate((row) => getComputedStyle(row).backgroundColor);
+  expect(oddHoverBackground).not.toBe(firstBackground);
+
+  await second.hover();
+  const evenHoverBackground = await second.evaluate((row) => getComputedStyle(row).backgroundColor);
+  expect(evenHoverBackground).toBe(oddHoverBackground);
+
   await first.click();
   await expect(first).toHaveAttribute("aria-selected", "true");
   await expect(second).toHaveAttribute("aria-selected", "false");
