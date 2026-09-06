@@ -15,6 +15,7 @@ test("selects ranges with Shift and toggles rows with Ctrl", async ({ page }) =>
   const firstBackground = await first.evaluate((row) => getComputedStyle(row).backgroundColor);
   const secondBackground = await second.evaluate((row) => getComputedStyle(row).backgroundColor);
   expect(secondBackground).toBe(firstBackground);
+  expect(await first.evaluate((row) => getComputedStyle(row).userSelect)).toBe("none");
 
   await first.hover();
   const oddHoverBackground = await first.evaluate((row) => getComputedStyle(row).backgroundColor);
@@ -27,14 +28,19 @@ test("selects ranges with Shift and toggles rows with Ctrl", async ({ page }) =>
   await first.click();
   await expect(first).toHaveAttribute("aria-selected", "true");
   await expect(second).toHaveAttribute("aria-selected", "false");
+  await expect(page.locator(".selection-count")).toHaveText("1 row selected");
 
   await third.click({ modifiers: ["Shift"] });
   await expect(first).toHaveAttribute("aria-selected", "true");
   await expect(second).toHaveAttribute("aria-selected", "true");
   await expect(third).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".selection-count")).toHaveText("3 rows selected");
+  await expect(page.locator(".selected-row-item")).toHaveCount(3);
 
   await second.click({ modifiers: ["Control"] });
   await expect(first).toHaveAttribute("aria-selected", "true");
   await expect(second).toHaveAttribute("aria-selected", "false");
   await expect(third).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".selection-count")).toHaveText("2 rows selected");
+  await expect(page.locator(".selected-row-item")).toHaveCount(2);
 });
