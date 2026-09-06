@@ -106,15 +106,17 @@
   background: var(--mb-table-row-alt-bg);
 }
 
-.mb-table__row:hover,
-.mb-table__row:focus {
-  background: var(--mb-table-row-hover-bg);
-  outline: none;
-}
-
 .mb-table__row--selected,
 .mb-table--striped .mb-table__row:nth-child(even).mb-table__row--selected {
   background: #dff1ef;
+}
+
+.mb-table__row:hover,
+.mb-table__row:focus,
+.mb-table--striped .mb-table__row:nth-child(even):hover,
+.mb-table--striped .mb-table__row:nth-child(even):focus {
+  background: var(--mb-table-row-hover-bg);
+  outline: none;
 }
 
 .mb-table__row--selectable {
