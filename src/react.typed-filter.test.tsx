@@ -54,27 +54,36 @@ describe("typed column filters", () => {
     expect(value.type).toBe("number");
   });
 
-  it("uses an enum select and filters by the selected value", () => {
+  it("uses direct multi-select enum filters without an operator dropdown", () => {
     renderTable();
 
     fireEvent.click(screen.getByRole("button", { name: /open column actions for stage/i }));
     const dialog = screen.getByRole("dialog", { name: /column actions for stage/i });
-    const operator = within(dialog).getByLabelText("Filter") as HTMLSelectElement;
-    const value = within(dialog).getByLabelText("Value") as HTMLSelectElement;
 
-    expect(operator.value).toBe("equals");
-    expect(value.tagName).toBe("SELECT");
-    expect(Array.from(value.options).map((option) => option.value)).toEqual([
-      "",
-      "Proposal",
-      "Closed",
-    ]);
+    expect(within(dialog).queryByLabelText("Filter")).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /apply/i })).toBeNull();
 
-    fireEvent.change(value, { target: { value: "Closed" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: /apply/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Proposal" }));
+    expect(
+      within(dialog).getByRole("button", { name: "Proposal" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByText("Alpha")).toBeTruthy();
+    expect(screen.queryByText("Beta")).toBeNull();
 
+    fireEvent.click(within(dialog).getByRole("button", { name: "Closed" }));
+    expect(
+      within(dialog).getByRole("button", { name: "Closed" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByText("Alpha")).toBeTruthy();
     expect(screen.getByText("Beta")).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Proposal" }));
     expect(screen.queryByText("Alpha")).toBeNull();
+    expect(screen.getByText("Beta")).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Closed" }));
+    expect(screen.getByText("Alpha")).toBeTruthy();
+    expect(screen.getByText("Beta")).toBeTruthy();
   });
 });
 

@@ -918,6 +918,7 @@ function ColumnMenu<TRow>({
     (filter) => filter.columnId === column.id,
   );
   const categorical = Boolean(filterOptions?.length);
+  const categoricalValues = getCategoricalFilterValues(activeColumnFilter, filterOptions);
   const [draft, setDraft] = useState<ColumnFilterDraft>(() =>
     createInitialColumnFilterDraft(columnType, activeColumnFilter, categorical),
   );
@@ -929,6 +930,21 @@ function ColumnMenu<TRow>({
 
   const updateDraft = (updates: Partial<ColumnFilterDraft>) => {
     setDraft((current) => ({ ...current, ...updates }));
+  };
+  const toggleCategoricalValue = (option: string) => {
+    const nextValues = categoricalValues.includes(option)
+      ? categoricalValues.filter((value) => value !== option)
+      : [...categoricalValues, option];
+
+    setFilter(
+      nextValues.length > 0
+        ? replaceColumnFilter(activeFilter, {
+            columnId: column.id,
+            operator: "in",
+            value: nextValues,
+          })
+        : removeColumnFilter(activeFilter, column.id),
+    );
   };
   const applyFilter = () => {
     const columnFilter = createColumnFilterFromDraft(column.id, columnType, draft);
@@ -996,42 +1012,80 @@ function ColumnMenu<TRow>({
 
       {showFilter ? (
         <div className="mb-table__column-menu-section">
-          <label className="mb-table__column-menu-field">
-            <span>Filter</span>
-            <select
-              onChange={(event) =>
-                updateDraft({ operator: event.target.value as TableFilterOperator })
-              }
-              value={draft.operator}
-            >
-              {operators.map((operator) => (
-                <option key={operator} value={operator}>
-                  {filterOperatorLabels[operator]}
-                </option>
-              ))}
-            </select>
-          </label>
+          {categorical ? (
+            <>
+              <div
+                aria-label={`Filter ${label}`}
+                className="mb-table__column-menu-section"
+                role="group"
+              >
+                {filterOptions?.map((option) => {
+                  const selected = categoricalValues.includes(option);
 
-          {renderFilterValueControl(columnType, filterOptions, draft, updateDraft)}
+                  return (
+                    <button
+                      aria-label={option}
+                      aria-pressed={selected}
+                      className="mb-table__column-menu-button"
+                      key={option}
+                      onClick={() => toggleCategoricalValue(option)}
+                      type="button"
+                    >
+                      <span aria-hidden="true">{selected ? "✓ " : "○ "}</span>
+                      <span>{option}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                className="mb-table__column-menu-button"
+                disabled={!activeColumnFilter}
+                onClick={clearColumnFilter}
+                type="button"
+              >
+                Clear filter
+              </button>
+            </>
+          ) : (
+            <>
+              <label className="mb-table__column-menu-field">
+                <span>Filter</span>
+                <select
+                  onChange={(event) =>
+                    updateDraft({ operator: event.target.value as TableFilterOperator })
+                  }
+                  value={draft.operator}
+                >
+                  {operators.map((operator) => (
+                    <option key={operator} value={operator}>
+                      {filterOperatorLabels[operator]}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <div className="mb-table__column-menu-actions">
-            <button
-              className="mb-table__column-menu-button"
-              disabled={!canApplyFilter}
-              onClick={applyFilter}
-              type="button"
-            >
-              Apply
-            </button>
-            <button
-              className="mb-table__column-menu-button"
-              disabled={!activeColumnFilter}
-              onClick={clearColumnFilter}
-              type="button"
-            >
-              Clear filter
-            </button>
-          </div>
+              {renderFilterValueControl(columnType, undefined, draft, updateDraft)}
+
+              <div className="mb-table__column-menu-actions">
+                <button
+                  className="mb-table__column-menu-button"
+                  disabled={!canApplyFilter}
+                  onClick={applyFilter}
+                  type="button"
+                >
+                  Apply
+                </button>
+                <button
+                  className="mb-table__column-menu-button"
+                  disabled={!activeColumnFilter}
+                  onClick={clearColumnFilter}
+                  type="button"
+                >
+                  Clear filter
+                </button>
+              </div>
+            </>
+          )}
           <button
             className="mb-table__column-menu-button"
             disabled={!activeFilter?.columnFilters?.length}
@@ -1229,6 +1283,27 @@ function hasActiveColumnFilter<TRow>(
   columnId: string,
 ) {
   return filter?.columnFilters?.some((columnFilter) => columnFilter.columnId === columnId) ?? false;
+}
+
+function getCategoricalFilterValues(
+  filter: TableColumnFilter | undefined,
+  filterOptions: readonly string[] | undefined,
+): string[] {
+  if (!filter || !filterOptions?.length) {
+    return [];
+  }
+
+  const values =
+    filter.operator === "in" && Array.isArray(filter.value)
+      ? filter.value
+      : filter.operator === "equals"
+        ? [filter.value]
+        : [];
+  const selectedValues = new Set(
+    values.filter((value): value is string => typeof value === "string"),
+  );
+
+  return filterOptions.filter((option) => selectedValues.has(option));
 }
 
 function replaceColumnFilter<TRow>(
