@@ -90,7 +90,8 @@
   background: var(--mb-table-row-alt-bg);
 }
 
-.mb-native-table__row:hover .mb-native-table__cell {
+.mb-native-table__row:hover .mb-native-table__cell,
+.mb-native-table--striped .mb-native-table__row:nth-child(even):hover .mb-native-table__cell {
   background: var(--mb-table-row-hover-bg);
 }
 
