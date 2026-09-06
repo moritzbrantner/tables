@@ -39,6 +39,7 @@ export type TableColumn<TRow, TValue = unknown> = {
   cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
   className?: string;
   filterable?: boolean;
+  filterOptions?: readonly string[];
   header: ReactNode;
   id: string;
   maxWidth?: number;
