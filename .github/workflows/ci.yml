@@ -27,10 +27,8 @@ jobs:
       - name: Lint
         run: bunx oxlint@1.80.0 --format=github
 
-      - name: Setup Rust
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install
 
       - name: Install wasm-pack
         run: if ! command -v wasm-pack; then cargo install wasm-pack --version 0.14.0 --locked; fi
