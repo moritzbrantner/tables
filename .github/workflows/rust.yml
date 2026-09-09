@@ -9,6 +9,7 @@ on:
       - "crates/**"
       - "docs/rust-foundation.md"
       - "package.json"
+      - "rust-toolchain.toml"
       - "scripts/benchmark-virtualization.ts"
       - "scripts/check-wasm-package.mjs"
       - "scripts/copy-wasm.mjs"
@@ -27,6 +28,7 @@ on:
       - "crates/**"
       - "docs/rust-foundation.md"
       - "package.json"
+      - "rust-toolchain.toml"
       - "scripts/benchmark-virtualization.ts"
       - "scripts/check-wasm-package.mjs"
       - "scripts/copy-wasm.mjs"
@@ -55,10 +57,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
-      - name: Install Rust toolchain
+      - name: Install pinned Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
-          rustup default stable
+          rustup toolchain install
+          rustup component add clippy rustfmt
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -91,10 +93,10 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install Rust toolchain
+      - name: Install pinned Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal --component clippy,rustfmt
-          rustup default stable
+          rustup toolchain install
+          rustup component add clippy rustfmt
 
       - name: Verify adapter lockfile
         run: cargo metadata --locked --manifest-path crates/tables-wasm/Cargo.toml --no-deps --format-version 1 > /dev/null
@@ -152,10 +154,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
-      - name: Install Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install
 
       - name: Run descriptive benchmarks
         run: cargo bench --locked --workspace 2>&1 | tee rust-benchmarks.txt
