@@ -480,7 +480,7 @@ describe("VirtualTable", () => {
 
     const row = screen.getByRole("row", { name: /alpha 20/i });
 
-    fireEvent.keyDown(row, { key: "Enter" });
+    fireEvent.keyDown(within(row).getAllByRole("gridcell")[0], { key: "Enter" });
 
     expect(row.getAttribute("aria-selected")).toBe("true");
     expect(handleRowClick).toHaveBeenCalledWith(rows[0], 0);
@@ -500,10 +500,11 @@ describe("VirtualTable", () => {
 
     const row = screen.getByRole("row", { name: /alpha 20/i });
 
-    fireEvent.keyDown(row, { key: " " });
+    const cell = within(row).getAllByRole("gridcell")[0];
+    fireEvent.keyDown(cell, { key: " " });
     expect(row.getAttribute("aria-selected")).toBe("true");
 
-    fireEvent.keyDown(row, { key: " " });
+    fireEvent.keyDown(cell, { key: " " });
     expect(row.getAttribute("aria-selected")).toBe("false");
   });
 
