@@ -220,10 +220,17 @@ function decodeColumnFilter(value: unknown): TableColumnFilter | null {
     filter.caseSensitive = value.caseSensitive;
   }
   if (Object.prototype.hasOwnProperty.call(value, "value")) {
-    const decodedValue = decodeValue(value.value);
-    if (isTableColumnFilterValue(decodedValue)) {
-      filter.value = decodedValue;
+    const encodedValue = value.value;
+    const decodedValue = decodeValue(encodedValue);
+    if (
+      !isRecord(encodedValue) ||
+      typeof encodedValue.kind !== "string" ||
+      (decodedValue === undefined && encodedValue.kind !== "undefined") ||
+      !isTableColumnFilterValue(decodedValue)
+    ) {
+      return null;
     }
+    filter.value = decodedValue;
   }
 
   return filter;

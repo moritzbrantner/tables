@@ -95,6 +95,41 @@ describe("table view-state codec", () => {
     });
   });
 
+  it("drops filters whose tagged values are structurally invalid", () => {
+    const decoded = decodeTableViewState(
+      JSON.stringify({
+        columnOrder: [],
+        columnSizing: {},
+        columnVisibility: {},
+        filter: {
+          columnFilters: [
+            {
+              columnId: "bad-string",
+              operator: "equals",
+              value: { kind: "string", value: 3 },
+            },
+            {
+              columnId: "bad-date",
+              operator: "equals",
+              value: { kind: "date", value: "not-a-date" },
+            },
+            {
+              columnId: "explicit-undefined",
+              operator: "equals",
+              value: { kind: "undefined" },
+            },
+          ],
+        },
+        sort: [],
+        version: TABLE_VIEW_STATE_VERSION,
+      }),
+    );
+
+    expect(decoded.filter?.columnFilters).toEqual([
+      { columnId: "explicit-undefined", operator: "equals", value: undefined },
+    ]);
+  });
+
   it("serializes only durable table state and excludes selection and predicates", () => {
     type Row = { id: string; name: string };
     const state = createDefaultTableState<Row>({

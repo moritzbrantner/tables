@@ -23,15 +23,17 @@ import { SearchField } from "../demo-ui";
 import {
   DataTable,
   VirtualTable,
-  decodeTableViewState,
-  encodeTableViewState,
-  tableStateToViewState,
-  viewStateToTableState,
   type TableFilter,
   type TableModel,
   type TableRowKey,
   type TableState,
 } from "@moritzbrantner/tables";
+import {
+  decodeTableViewState,
+  encodeTableViewState,
+  tableStateToViewState,
+  viewStateToTableState,
+} from "@moritzbrantner/tables/view-state";
 import "../../../styles.css";
 
 import { auditColumns, customerColumns, pipelineColumns } from "./columns";
