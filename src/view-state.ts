@@ -220,7 +220,10 @@ function decodeColumnFilter(value: unknown): TableColumnFilter | null {
     filter.caseSensitive = value.caseSensitive;
   }
   if (Object.prototype.hasOwnProperty.call(value, "value")) {
-    filter.value = decodeValue(value.value) as TableColumnFilter["value"];
+    const decodedValue = decodeValue(value.value);
+    if (isTableColumnFilterValue(decodedValue)) {
+      filter.value = decodedValue;
+    }
   }
 
   return filter;
@@ -307,6 +310,17 @@ function decodeValue(value: unknown): unknown {
     default:
       return undefined;
   }
+}
+
+function isTableColumnFilterValue(value: unknown): value is TableColumnFilter["value"] {
+  return (
+    value == null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string" ||
+    value instanceof Date ||
+    Array.isArray(value)
+  );
 }
 
 function decodeSort(value: unknown): TableSortState {
