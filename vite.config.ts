@@ -37,6 +37,10 @@ export default defineConfig({
         replacement: path.resolve(rootDir, "src/data.ts"),
       },
       {
+        find: /^@moritzbrantner\/tables\/view-state$/,
+        replacement: path.resolve(rootDir, "src/view-state.ts"),
+      },
+      {
         find: /^@moritzbrantner\/tables\/virtualization$/,
         replacement: path.resolve(rootDir, "src/virtualization.ts"),
       },

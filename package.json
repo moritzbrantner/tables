@@ -51,6 +51,10 @@
       "types": "./dist/data.d.ts",
       "import": "./dist/data.js"
     },
+    "./view-state": {
+      "types": "./dist/view-state.d.ts",
+      "import": "./dist/view-state.js"
+    },
     "./virtualization": {
       "types": "./dist/virtualization.d.ts",
       "import": "./dist/virtualization.js"
@@ -91,7 +95,7 @@
   },
   "scripts": {
     "benchmark:virtualization": "bun run build:wasm:node:release && bun ./scripts/benchmark-virtualization.ts",
-    "build": "tsup src/index.ts src/table.tsx src/react-rust.tsx src/data.ts src/virtualization.ts src/wasm.ts --format esm --dts --clean --out-dir dist && node ./scripts/copy-wasm.mjs",
+    "build": "tsup src/index.ts src/table.tsx src/react-rust.tsx src/data.ts src/view-state.ts src/virtualization.ts src/wasm.ts --format esm --dts --clean --out-dir dist && node ./scripts/copy-wasm.mjs",
     "build:examples": "vite build --outDir ../dist-examples --emptyOutDir",
     "build:examples:pages": "vite build --base=/tables/ --outDir ../dist-examples --emptyOutDir",
     "build:wasm": "wasm-pack build crates/tables-wasm --target web --release --out-dir ../../src/wasm/generated --out-name tables_wasm",

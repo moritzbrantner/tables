@@ -26,7 +26,14 @@ import {
   type TableFilter,
   type TableModel,
   type TableRowKey,
+  type TableState,
 } from "@moritzbrantner/tables";
+import {
+  decodeTableViewState,
+  encodeTableViewState,
+  tableStateToViewState,
+  viewStateToTableState,
+} from "@moritzbrantner/tables/view-state";
 import "../../../styles.css";
 
 import { auditColumns, customerColumns, pipelineColumns } from "./columns";
@@ -50,9 +57,17 @@ export function App() {
   const denseRows = useMemo(() => createPipelineRows(100000), []);
   const customerRows = useMemo(() => createCustomerRows(25000), []);
   const auditRows = useMemo(() => createAuditRows(36), []);
-  const [pipelineFilter, setPipelineFilter] = useState<TableFilter<PipelineRow> | null>({
-    query: "",
-  });
+  const initialPipelineTableState = useMemo<Partial<TableState<PipelineRow>>>(() => {
+    if (typeof window === "undefined") {
+      return {};
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    return viewStateToTableState<PipelineRow>(decodeTableViewState(params.get("table")));
+  }, []);
+  const [pipelineFilter, setPipelineFilter] = useState<TableFilter<PipelineRow> | null>(
+    () => initialPipelineTableState.filter ?? null,
+  );
   const [customerFilter, setCustomerFilter] = useState<TableFilter<CustomerRow> | null>({
     query: "",
   });
@@ -77,6 +92,33 @@ export function App() {
   const rowHeight = density === "compact" ? 36 : 44;
   const handleModelChange = useCallback((model: TableModel<PipelineRow>) => {
     setVisibleRows(model.rows.length);
+  }, []);
+  const persistPipelineState = useCallback((state: TableState<PipelineRow>) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("table", encodeTableViewState(tableStateToViewState(state)));
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
+  const handlePipelineFilterChange = useCallback((filter: TableFilter<PipelineRow> | null) => {
+    setPipelineFilter(filter);
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    const viewState = decodeTableViewState(url.searchParams.get("table"));
+    viewState.filter = filter
+      ? {
+          ...(filter.columnFilters ? { columnFilters: filter.columnFilters } : {}),
+          ...(filter.query !== undefined ? { query: filter.query } : {}),
+          ...(filter.queryColumnIds ? { queryColumnIds: filter.queryColumnIds } : {}),
+        }
+      : null;
+    url.searchParams.set("table", encodeTableViewState(viewState));
+    window.history.replaceState(window.history.state, "", url);
   }, []);
   const heroDataset =
     page === "wide" ? "Customer accounts" : page === "states" ? "Audit events" : "Pipeline";
@@ -144,13 +186,15 @@ export function App() {
           <OverviewPage
             density={density}
             filter={pipelineFilter}
+            initialState={initialPipelineTableState}
             onDensityChange={setDensity}
             onModelChange={handleModelChange}
+            onViewStateChange={persistPipelineState}
             rowHeight={rowHeight}
             rows={pipelineRows}
             selectedRowKeys={selectedPipelineRowKeys}
             selectedRows={selectedPipelineRows}
-            setFilter={setPipelineFilter}
+            setFilter={handlePipelineFilterChange}
             setSelectedRowKeys={setSelectedPipelineRowKeys}
           />
         )}
@@ -162,8 +206,10 @@ export function App() {
 function OverviewPage({
   density,
   filter,
+  initialState,
   onDensityChange,
   onModelChange,
+  onViewStateChange,
   rowHeight,
   rows,
   selectedRowKeys,
@@ -173,8 +219,10 @@ function OverviewPage({
 }: {
   density: TableDensity;
   filter: TableFilter<PipelineRow> | null;
+  initialState: Partial<TableState<PipelineRow>>;
   onDensityChange: (density: TableDensity) => void;
   onModelChange: (model: TableModel<PipelineRow>) => void;
+  onViewStateChange: (state: TableState<PipelineRow>) => void;
   rowHeight: number;
   rows: PipelineRow[];
   selectedRowKeys: readonly TableRowKey[];
@@ -210,6 +258,7 @@ function OverviewPage({
             columnResizing
             columns={pipelineColumns}
             height="min(620px, calc(100vh - 270px))"
+            initialState={initialState}
             onModelChange={onModelChange}
             onStateChange={({ state, type }) => {
               if (type === "filter") {
@@ -217,6 +266,8 @@ function OverviewPage({
               }
               if (type === "selection") {
                 setSelectedRowKeys(state.selection.selectedRowKeys);
+              } else {
+                onViewStateChange(state);
               }
             }}
             rowHeight={rowHeight}
