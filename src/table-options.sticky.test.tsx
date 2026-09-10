@@ -59,10 +59,22 @@ describe("sticky table options ordering", () => {
         .map((checkbox) => checkbox.parentElement?.textContent),
     ).toEqual(["Left B", "Left A", "Center", "Right"]);
 
-    expect(within(dialog).getByRole("button", { name: /move left a down/i })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: /move center up/i })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: /move center down/i })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: /move right up/i })).toBeDisabled();
+    expect(
+      (within(dialog).getByRole("button", { name: /move left a down/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (within(dialog).getByRole("button", { name: /move center up/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (within(dialog).getByRole("button", { name: /move center down/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (within(dialog).getByRole("button", { name: /move right up/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     fireEvent.click(within(dialog).getByRole("button", { name: /move left b down/i }));
 
