@@ -1,0 +1,252 @@
+name: Apply React-free core refactor
+
+on:
+  push:
+    branches:
+      - refactor/react-free-core
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/react-free-core
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Apply guarded refactor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          data_path = Path("src/data.ts")
+          data = data_path.read_text()
+          data = replace_once(data, 'import type { ReactNode } from "react";\n\n', '', 'remove React import')
+          old_column = '''export type TableColumn<TRow, TValue = unknown> = {
+            align?: TableColumnAlign;
+            ariaLabel?: string;
+            accessor: keyof TRow | ((row: TRow, rowIndex: number) => TValue);
+            cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
+            className?: string;
+            filterable?: boolean;
+            filterOptions?: readonly string[];
+            header: ReactNode;
+            id: string;
+            maxWidth?: number;
+            minWidth?: number;
+            resizable?: boolean;
+            sortAccessor?: (row: TRow, rowIndex: number) => string | number | boolean | Date | null;
+            sortable?: boolean;
+            sticky?: TableColumnSticky;
+            type?: TableColumnType;
+            width?: number;
+          };
+          '''.replace('          ', '')
+          new_column = '''export type TableDataColumn<TRow, TValue = unknown> = {
+            align?: TableColumnAlign;
+            ariaLabel?: string;
+            accessor: keyof TRow | ((row: TRow, rowIndex: number) => TValue);
+            className?: string;
+            filterable?: boolean;
+            filterOptions?: readonly string[];
+            id: string;
+            maxWidth?: number;
+            minWidth?: number;
+            resizable?: boolean;
+            sortAccessor?: (row: TRow, rowIndex: number) => string | number | boolean | Date | null;
+            sortable?: boolean;
+            sticky?: TableColumnSticky;
+            type?: TableColumnType;
+            width?: number;
+          };
+          '''.replace('          ', '')
+          data = replace_once(data, old_column, new_column, 'replace core column type')
+          data = data.replace('TableColumn<', 'TableDataColumn<')
+          data_path.write_text(data)
+
+          for file_name in ["src/query-kernel.ts", "src/wasm-internal.ts"]:
+              path = Path(file_name)
+              text = path.read_text().replace('TableColumn', 'TableDataColumn')
+              path.write_text(text)
+
+          for file_name in ["src/data.test.ts", "src/wasm-parity.test.ts"]:
+              path = Path(file_name)
+              text = path.read_text().replace('TableColumn', 'TableDataColumn')
+              text = re.sub(r'(?m)^\s*header: "[^"]+",\n', '', text)
+              text = re.sub(r', header: "[^"]+"', '', text)
+              path.write_text(text)
+
+          react_path = Path("src/react.tsx")
+          react = react_path.read_text()
+          react = replace_once(react, '  type TableColumn,\n', '  type TableDataColumn,\n', 'React data import')
+          marker = 'export type TableSelectionMode = "multiple" | "none" | "single";\n\n'
+          react_column = '''export type TableColumn<TRow, TValue = unknown> = TableDataColumn<TRow, TValue> & {
+            cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
+            header: ReactNode;
+          };
+
+          export function createTableColumnHelper<TRow>() {
+            function accessor<TKey extends keyof TRow>(
+              accessorKey: TKey,
+              column: Omit<TableColumn<TRow, TRow[TKey]>, "accessor">,
+            ): TableColumn<TRow, TRow[TKey]> {
+              return { ...column, accessor: accessorKey };
+            }
+
+            function accessorFn<TValue>(
+              accessorFunction: (row: TRow, rowIndex: number) => TValue,
+              column: Omit<TableColumn<TRow, TValue>, "accessor">,
+            ): TableColumn<TRow, TValue> {
+              return { ...column, accessor: accessorFunction };
+            }
+
+            return { accessor, accessorFn };
+          }
+
+          '''.replace('          ', '')
+          react = replace_once(react, marker, marker + react_column, 'insert React column adapter')
+          react = replace_once(
+              react,
+              '  return String(row[rowKey]);\n',
+              '  const value = row[rowKey];\n  return typeof value === "number" || typeof value === "string" ? value : String(value);\n',
+              'preserve numeric row keys',
+          )
+          react_path.write_text(react)
+
+          react_rust_path = Path("src/react-rust.tsx")
+          react_rust = react_rust_path.read_text()
+          react_rust = replace_once(
+              react_rust,
+              '  ColumnResizeMode,\n',
+              '  ColumnResizeMode,\n  TableColumn,\n',
+              're-export React column',
+          )
+          react_rust = replace_once(
+              react_rust,
+              '  DataTableProps,\n',
+              '  DataTableProps,\n  createTableColumnHelper,\n',
+              're-export React column helper',
+          )
+          react_rust_path.write_text(react_rust)
+
+          index_path = Path("src/index.ts")
+          index = index_path.read_text()
+          index = replace_once(index, '  type TableColumn,\n', '  type TableDataColumn,\n', 'root headless column export')
+          index = replace_once(
+              index,
+              '  DataTable,\n  VirtualTable,\n',
+              '  DataTable,\n  VirtualTable,\n  createTableColumnHelper,\n',
+              'root helper export',
+          )
+          index = replace_once(
+              index,
+              '  type DataTableProps,\n',
+              '  type DataTableProps,\n  type TableColumn,\n',
+              'root React column export',
+          )
+          index = replace_once(
+              index,
+              '  Table,\n',
+              '  Table,\n  createTableColumnDefHelper,\n',
+              'root semantic helper export',
+          )
+          index_path.write_text(index)
+
+          table_path = Path("src/table.tsx")
+          table = table_path.read_text()
+          table = replace_once(
+              table,
+              'export type TableColumnDef<TRow> = {\n  accessor: keyof TRow | ((row: TRow, rowIndex: number) => unknown);\n  align?: TableAlign;\n  cell?: (value: unknown, row: TRow, rowIndex: number) => ReactNode;\n',
+              'export type TableColumnDef<TRow, TValue = unknown> = {\n  accessor: keyof TRow | ((row: TRow, rowIndex: number) => TValue);\n  align?: TableAlign;\n  cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;\n',
+              'make semantic column value generic',
+          )
+          helper_marker = 'export type TableRowKey<TRow> = keyof TRow | ((row: TRow, rowIndex: number) => number | string);\n\n'
+          semantic_helper = '''export function createTableColumnDefHelper<TRow>() {
+            function accessor<TKey extends keyof TRow>(
+              accessorKey: TKey,
+              column: Omit<TableColumnDef<TRow, TRow[TKey]>, "accessor">,
+            ): TableColumnDef<TRow, TRow[TKey]> {
+              return { ...column, accessor: accessorKey };
+            }
+
+            function accessorFn<TValue>(
+              accessorFunction: (row: TRow, rowIndex: number) => TValue,
+              column: Omit<TableColumnDef<TRow, TValue>, "accessor">,
+            ): TableColumnDef<TRow, TValue> {
+              return { ...column, accessor: accessorFunction };
+            }
+
+            return { accessor, accessorFn };
+          }
+
+          '''.replace('          ', '')
+          table = replace_once(table, helper_marker, helper_marker + semantic_helper, 'insert semantic helper')
+          table_path.write_text(table)
+
+          typecheck_path = Path("src/column-inference.typecheck.tsx")
+          typecheck_path.write_text('''import { createTableColumnHelper } from "./react";
+          import { createTableColumnDefHelper } from "./table";
+
+          type Row = { id: string; total: number };
+
+          const grid = createTableColumnHelper<Row>();
+          grid.accessor("total", {
+            header: "Total",
+            cell: (value) => {
+              const typed: number = value;
+              return typed.toFixed(2);
+            },
+          });
+          grid.accessorFn((row) => row.id.length, {
+            header: "ID length",
+            cell: (value) => {
+              const typed: number = value;
+              return typed;
+            },
+          });
+
+          const semantic = createTableColumnDefHelper<Row>();
+          semantic.accessor("total", {
+            header: "Total",
+            cell: (value) => {
+              const typed: number = value;
+              return typed.toFixed(2);
+            },
+          });
+          semantic.accessorFn((row) => row.id, {
+            header: "ID",
+            cell: (value) => {
+              const typed: string = value;
+              return typed;
+            },
+          });
+          '''.replace('          ', ''))
+          PY
+          rm -f .github/workflows/apply-react-free-core.yml
+      - name: Verify refactor
+        run: |
+          bun install --frozen-lockfile
+          bun run check-types
+          bun run test
+          bun run build
+      - name: Commit refactor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Make table data contracts React-free"
+          git push origin HEAD:refactor/react-free-core
