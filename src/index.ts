@@ -53,6 +53,16 @@ export {
   type TableProps,
 } from "./table";
 export {
+  TABLE_VIEW_STATE_VERSION,
+  createDefaultTableViewState,
+  decodeTableViewState,
+  encodeTableViewState,
+  tableStateToViewState,
+  viewStateToTableState,
+  type TableViewFilter,
+  type TableViewState,
+} from "./view-state";
+export {
   getFixedVirtualRange,
   getOffsets,
   getVariableVirtualRange,
