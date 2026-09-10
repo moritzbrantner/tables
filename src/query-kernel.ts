@@ -1,4 +1,4 @@
-import type { TableColumn, TableFilter, TableSortState } from "./data";
+import type { TableDataColumn, TableFilter, TableSortState } from "./data";
 
 export type TableQueryResult = {
   filteredRowCount: number;
@@ -8,7 +8,7 @@ export type TableQueryResult = {
 export type TableQueryKernel = {
   queryTable<TRow>(
     rows: readonly TRow[],
-    columns: readonly TableColumn<TRow>[],
+    columns: readonly TableDataColumn<TRow>[],
     filter?: TableFilter<TRow> | null,
     sort?: TableSortState,
   ): TableQueryResult;

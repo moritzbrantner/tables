@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 import {
   createTableModel,
-  type TableColumn,
+  type TableDataColumn,
   type TableFilter,
   type TableSortState,
 } from "./data";
@@ -112,13 +112,13 @@ describe.runIf(enabled)("tables Wasm parity", () => {
       { active: true, id: "c", name: "Äpfel", region: "München", score: 20, tags: ["core", "eu"] },
       { active: null, id: "d", name: "Delta", region: null, score: null, tags: [] },
     ];
-    const columns: TableColumn<Row>[] = [
-      { accessor: "id", header: "ID", id: "id", type: "string" },
-      { accessor: "name", header: "Name", id: "name", type: "string" },
-      { accessor: "region", header: "Region", id: "region", type: "string" },
-      { accessor: "score", header: "Score", id: "score", type: "number" },
-      { accessor: "active", header: "Active", id: "active", type: "boolean" },
-      { accessor: "tags", header: "Tags", id: "tags", type: "json" },
+    const columns: TableDataColumn<Row>[] = [
+      { accessor: "id", id: "id", type: "string" },
+      { accessor: "name", id: "name", type: "string" },
+      { accessor: "region", id: "region", type: "string" },
+      { accessor: "score", id: "score", type: "number" },
+      { accessor: "active", id: "active", type: "boolean" },
+      { accessor: "tags", id: "tags", type: "json" },
     ];
     const scenarios: Array<{ filter: TableFilter<Row> | null; sort: TableSortState }> = [
       {
@@ -177,11 +177,10 @@ describe.runIf(enabled)("tables Wasm parity", () => {
       { id: "b", score: 30 },
       { id: "c", score: 20 },
     ];
-    const columns: TableColumn<(typeof rows)[number]>[] = [
-      { accessor: "id", header: "ID", id: "id", type: "string" },
+    const columns: TableDataColumn<(typeof rows)[number]>[] = [
+      { accessor: "id", id: "id", type: "string" },
       {
         accessor: "score",
-        header: "Score",
         id: "score",
         sortAccessor: (row) => -row.score,
         type: "number",

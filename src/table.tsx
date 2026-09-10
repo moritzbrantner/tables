@@ -9,10 +9,10 @@ export type TableAlign = "center" | "end" | "start";
 
 export type TableDensity = "comfortable" | "compact";
 
-export type TableColumnDef<TRow> = {
-  accessor: keyof TRow | ((row: TRow, rowIndex: number) => unknown);
+export type TableColumnDef<TRow, TValue = unknown> = {
+  accessor: keyof TRow | ((row: TRow, rowIndex: number) => TValue);
   align?: TableAlign;
-  cell?: (value: unknown, row: TRow, rowIndex: number) => ReactNode;
+  cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
   cellClassName?: string | ((row: TRow, rowIndex: number) => string | undefined);
   header: ReactNode;
   headerClassName?: string;
@@ -23,6 +23,24 @@ export type TableColumnDef<TRow> = {
 };
 
 export type TableRowKey<TRow> = keyof TRow | ((row: TRow, rowIndex: number) => number | string);
+
+export function createTableColumnDefHelper<TRow>() {
+  function accessor<TKey extends keyof TRow>(
+    accessorKey: TKey,
+    column: Omit<TableColumnDef<TRow, TRow[TKey]>, "accessor">,
+  ): TableColumnDef<TRow, TRow[TKey]> {
+    return { ...column, accessor: accessorKey };
+  }
+
+  function accessorFn<TValue>(
+    accessorFunction: (row: TRow, rowIndex: number) => TValue,
+    column: Omit<TableColumnDef<TRow, TValue>, "accessor">,
+  ): TableColumnDef<TRow, TValue> {
+    return { ...column, accessor: accessorFunction };
+  }
+
+  return { accessor, accessorFn };
+}
 
 export type TableProps<TRow> = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
   ariaLabel?: string;

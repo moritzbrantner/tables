@@ -5,7 +5,7 @@ import {
   applyTableSort,
   createTableModel,
   getNextSortState,
-  type TableColumn,
+  type TableDataColumn,
 } from "./data";
 
 type Row = {
@@ -56,14 +56,14 @@ const rows: Row[] = [
   },
 ];
 
-const columns: TableColumn<Row>[] = [
-  { accessor: "id", header: "ID", id: "id", type: "string" },
-  { accessor: "name", header: "Name", id: "name", type: "string" },
-  { accessor: "region", header: "Region", id: "region", type: "string" },
-  { accessor: "score", header: "Score", id: "score", sortable: true, type: "number" },
-  { accessor: "createdAt", header: "Created", id: "createdAt", type: "date" },
-  { accessor: "active", header: "Active", id: "active", type: "boolean" },
-  { accessor: "tags", header: "Tags", id: "tags", type: "json" },
+const columns: TableDataColumn<Row>[] = [
+  { accessor: "id", id: "id", type: "string" },
+  { accessor: "name", id: "name", type: "string" },
+  { accessor: "region", id: "region", type: "string" },
+  { accessor: "score", id: "score", sortable: true, type: "number" },
+  { accessor: "createdAt", id: "createdAt", type: "date" },
+  { accessor: "active", id: "active", type: "boolean" },
+  { accessor: "tags", id: "tags", type: "json" },
 ];
 
 describe("table data semantics", () => {
@@ -168,10 +168,9 @@ describe("table data semantics", () => {
       ]).map((row) => row.id),
     ).toEqual(["y", "z", "x"]);
 
-    const accessorColumns: TableColumn<Row>[] = [
+    const accessorColumns: TableDataColumn<Row>[] = [
       {
         accessor: "score",
-        header: "Score",
         id: "score",
         sortAccessor: (row) => row.score == null ? null : -row.score,
         type: "number",

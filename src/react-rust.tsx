@@ -10,6 +10,7 @@ import { loadTableWasmKernel } from "./wasm";
 
 export type {
   ColumnResizeMode,
+  TableColumn,
   DataTableProps,
   RowKey,
   TableColumnMenuOptions,
@@ -18,6 +19,8 @@ export type {
   TableSelectionMode,
   VirtualTableProps,
 } from "./react";
+
+export { createTableColumnHelper } from "./react";
 
 export function DataTable<TRow>(props: DataTableProps<TRow>) {
   useTableRustKernel();

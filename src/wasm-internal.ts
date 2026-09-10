@@ -1,6 +1,6 @@
 import {
   getColumnValue,
-  type TableColumn,
+  type TableDataColumn,
   type TableColumnFilter,
   type TableColumnType,
   type TableFilter,
@@ -54,7 +54,7 @@ type GeneratedTablesWasmModule = {
 };
 
 type IndexedColumn<TRow> = {
-  column: TableColumn<TRow>;
+  column: TableDataColumn<TRow>;
   columnIndex: number;
   type: TableColumnType;
 };
@@ -143,7 +143,7 @@ export function createTableWasmKernelFromModule(value: unknown): TableWasmKernel
 function queryTableWithRust<TRow>(
   module: GeneratedTablesWasmModule,
   rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
+  columns: readonly TableDataColumn<TRow>[],
   filter: TableFilter<TRow> | null | undefined,
   sort: TableSortState,
 ): TableQueryResult {
@@ -214,7 +214,7 @@ function queryTableWithRust<TRow>(
 function indexColumns<TRow>(
   index: GeneratedTableIndex,
   rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
+  columns: readonly TableDataColumn<TRow>[],
 ): IndexedColumn<TRow>[] {
   return columns.map((column) => {
     const values = rows.map((row, rowIndex) => getColumnValue(column, row, rowIndex));
