@@ -44,6 +44,80 @@ describe("VirtualTable", () => {
     );
   });
 
+  it("shows row indices and opens table options from the empty index header", () => {
+    render(
+      <VirtualTable
+        columnVirtualization={false}
+        columns={columns}
+        height={240}
+        rowKey="id"
+        rows={rows}
+        showRowIndex
+      />,
+    );
+
+    const tableOptionsButton = screen.getByRole("button", { name: /open table options/i });
+
+    expect(tableOptionsButton.textContent).toBe("");
+    expect(screen.getByRole("grid").getAttribute("aria-colcount")).toBe("3");
+    expect(screen.getAllByRole("rowheader").map((cell) => cell.textContent)).toEqual([
+      "1",
+      "2",
+      "3",
+    ]);
+
+    fireEvent.click(tableOptionsButton);
+    expect(screen.getByRole("dialog", { name: /table options/i })).toBeTruthy();
+  });
+
+  it("shows, hides, and reorders columns from table options", () => {
+    const handleStateChange = vi.fn();
+
+    render(
+      <VirtualTable
+        columnVirtualization={false}
+        columns={columns}
+        height={240}
+        onStateChange={handleStateChange}
+        rowKey="id"
+        rows={rows}
+        showRowIndex
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /open table options/i }));
+    const dialog = screen.getByRole("dialog", { name: /table options/i });
+    const nameVisibility = within(dialog).getByRole("checkbox", { name: /name/i });
+
+    fireEvent.click(nameVisibility);
+    expect(screen.queryByRole("button", { name: /sort name ascending/i })).toBeNull();
+    expect(handleStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: expect.objectContaining({
+          columnVisibility: expect.objectContaining({ name: false }),
+        }),
+        type: "columnVisibility",
+      }),
+    );
+
+    fireEvent.click(nameVisibility);
+    fireEvent.click(within(dialog).getByRole("button", { name: /move value up/i }));
+
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent).slice(1),
+    ).toEqual(["Value", "Name"]);
+    expect(screen.getAllByRole("gridcell").map((cell) => cell.textContent).slice(0, 2)).toEqual([
+      "20",
+      "Alpha",
+    ]);
+    expect(handleStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: expect.objectContaining({ columnOrder: ["value", "name"] }),
+        type: "columnOrder",
+      }),
+    );
+  });
+
   it("shows an empty state after filtering through table state", () => {
     render(
       <VirtualTable

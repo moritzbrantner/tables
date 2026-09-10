@@ -24,7 +24,9 @@ import {
   updateTableState,
   type TableColumn,
   type TableColumnFilter,
+  type TableColumnOrderState,
   type TableColumnType,
+  type TableColumnVisibilityState,
   type TableFilter,
   type TableFilterOperator,
   type TableModel,
@@ -72,6 +74,7 @@ export type VirtualTableProps<TRow> = {
   rowKey: RowKey<TRow>;
   rows: readonly TRow[];
   selectionMode?: TableSelectionMode;
+  showRowIndex?: boolean;
   sortedRowCount?: number;
   state?: Partial<TableState<TRow>>;
   striped?: boolean;
@@ -97,11 +100,19 @@ type Size = {
   width: number;
 };
 
-type ColumnMenuState = {
-  columnId: string;
-  x: number;
-  y: number;
-} | null;
+type MenuState =
+  | {
+      columnId: string;
+      kind: "column";
+      x: number;
+      y: number;
+    }
+  | {
+      kind: "table";
+      x: number;
+      y: number;
+    }
+  | null;
 
 type ResolvedColumnMenuOptions = {
   filter: boolean;
@@ -132,6 +143,8 @@ type ResizeState = {
 
 const defaultRowHeight = 44;
 const defaultColumnWidth = 160;
+const defaultRowIndexWidth = 48;
+const tableMenuId = "mb-table-options-menu";
 const columnMenuWidth = 240;
 const columnMenuOffset = 12;
 const defaultMinColumnWidth = 72;
@@ -190,19 +203,20 @@ export function VirtualTable<TRow>({
   rowKey,
   rows,
   selectionMode = "none",
+  showRowIndex = false,
   sortedRowCount,
   state,
   striped = true,
   totalRowCount,
 }: VirtualTableProps<TRow>) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const columnMenuRef = useRef<HTMLDivElement | null>(null);
-  const columnMenuTriggerRef = useRef<HTMLElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuTriggerRef = useRef<HTMLElement | null>(null);
   const ignoreColumnMenuScrollCloseUntilRef = useRef(0);
   const lastSelectedRowKeyRef = useRef<TableRowKey | null>(null);
   const viewport = useElementSize(scrollRef);
   const [scrollOffset, setScrollOffset] = useState({ left: 0, top: 0 });
-  const [columnMenuState, setColumnMenuState] = useState<ColumnMenuState>(null);
+  const [menuState, setMenuState] = useState<MenuState>(null);
   const [resizeState, setResizeState] = useState<ResizeState | null>(null);
   const [internalState, setInternalState] = useState(() =>
     createDefaultTableState(initialState),
@@ -211,9 +225,21 @@ export function VirtualTable<TRow>({
     () => mergeControlledTableState(internalState, state),
     [internalState, state],
   );
+  const orderedColumns = useMemo(
+    () => resolveColumnOrder(columns, activeState.columnOrder),
+    [activeState.columnOrder, columns],
+  );
+  const visibleColumns = useMemo(
+    () =>
+      orderedColumns.filter((column) =>
+        isColumnVisible(activeState.columnVisibility, column.id),
+      ),
+    [activeState.columnVisibility, orderedColumns],
+  );
+  const rowIndexWidth = showRowIndex ? defaultRowIndexWidth : 0;
   const columnMenuOptions = useMemo(() => resolveColumnMenuOptions(columnMenu), [columnMenu]);
-  const activeMenuColumn = columnMenuState
-    ? columns.find((column) => column.id === columnMenuState.columnId) ?? null
+  const activeMenuColumn = menuState?.kind === "column"
+    ? columns.find((column) => column.id === menuState.columnId) ?? null
     : null;
   const model = useMemo<TableModel<TRow>>(
     () =>
@@ -246,7 +272,7 @@ export function VirtualTable<TRow>({
   const selectedRowKeySet = useMemo(() => new Set(selectedRowKeys), [selectedRowKeys]);
   const columnWidths = useMemo(
     () =>
-      columns.map((column) =>
+      visibleColumns.map((column) =>
         resolveColumnWidth(
           column,
           resizeState?.columnId === column.id
@@ -254,19 +280,19 @@ export function VirtualTable<TRow>({
             : activeState.columnSizing[column.id],
         ),
       ),
-    [activeState.columnSizing, columns, resizeState],
+    [activeState.columnSizing, resizeState, visibleColumns],
   );
   const columnEntries = useMemo(
-    () => createColumnEntries(columns, columnWidths),
-    [columns, columnWidths],
+    () => createColumnEntries(visibleColumns, columnWidths, rowIndexWidth),
+    [columnWidths, rowIndexWidth, visibleColumns],
   );
   const totalColumnWidth = useMemo(
-    () => columnWidths.reduce((sum, width) => sum + width, 0),
-    [columnWidths],
+    () => rowIndexWidth + columnWidths.reduce((sum, width) => sum + width, 0),
+    [columnWidths, rowIndexWidth],
   );
   const stickyLeftWidth = useMemo(
-    () => columnEntries.left.reduce((sum, entry) => sum + entry.width, 0),
-    [columnEntries.left],
+    () => rowIndexWidth + columnEntries.left.reduce((sum, entry) => sum + entry.width, 0),
+    [columnEntries.left, rowIndexWidth],
   );
   const stickyRightWidth = useMemo(
     () => columnEntries.right.reduce((sum, entry) => sum + entry.width, 0),
@@ -322,6 +348,7 @@ export function VirtualTable<TRow>({
   );
   const visibleCenterEntries = columnEntries.center.slice(columnRange.startIndex, columnRange.endIndex);
   const gridTemplateColumns = createGridTemplateColumns(
+    rowIndexWidth,
     columnEntries.left.map((entry) => entry.width),
     columnRange.offsetBefore,
     visibleCenterEntries.map((entry) => entry.width),
@@ -363,9 +390,19 @@ export function VirtualTable<TRow>({
       updateStateField("selection", { selectedRowKeys }, "selection"),
     [updateStateField],
   );
+  const setColumnOrder = useCallback(
+    (columnOrder: TableColumnOrderState) =>
+      updateStateField("columnOrder", columnOrder, "columnOrder"),
+    [updateStateField],
+  );
   const setColumnSizing = useCallback(
     (columnSizing: Record<string, number>) =>
       updateStateField("columnSizing", columnSizing, "columnSizing"),
+    [updateStateField],
+  );
+  const setColumnVisibility = useCallback(
+    (columnVisibility: TableColumnVisibilityState) =>
+      updateStateField("columnVisibility", columnVisibility, "columnVisibility"),
     [updateStateField],
   );
 
@@ -425,47 +462,47 @@ export function VirtualTable<TRow>({
     };
   }, [activeState.columnSizing, columnResizeMode, columns, resizeState, setColumnSizing]);
 
-  const closeColumnMenu = useCallback(() => {
-    setColumnMenuState(null);
-    columnMenuTriggerRef.current?.focus();
-    columnMenuTriggerRef.current = null;
+  const closeMenu = useCallback(() => {
+    setMenuState(null);
+    menuTriggerRef.current?.focus();
+    menuTriggerRef.current = null;
   }, []);
 
   useLayoutEffect(() => {
-    if (!columnMenuState || !columnMenuRef.current) {
+    if (!menuState || !menuRef.current) {
       return;
     }
 
-    const focusTarget = columnMenuRef.current.querySelector<HTMLElement>(
+    const focusTarget = menuRef.current.querySelector<HTMLElement>(
       "button:not(:disabled), input:not(:disabled), select:not(:disabled)",
     );
 
     focusTarget?.focus({ preventScroll: true });
-  }, [columnMenuState]);
+  }, [menuState]);
 
   useEffect(() => {
-    if (!columnMenuState) {
+    if (!menuState) {
       return;
     }
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (columnMenuRef.current?.contains(event.target as Node)) {
+      if (menuRef.current?.contains(event.target as Node)) {
         return;
       }
 
-      closeColumnMenu();
+      closeMenu();
     };
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
-        closeColumnMenu();
+        closeMenu();
       }
     };
     const handleWindowScroll = () => {
       if (!shouldIgnoreColumnMenuScrollClose(ignoreColumnMenuScrollCloseUntilRef.current)) {
-        closeColumnMenu();
+        closeMenu();
       }
     };
-    const handleWindowResize = () => closeColumnMenu();
+    const handleWindowResize = () => closeMenu();
 
     document.addEventListener("pointerdown", handlePointerDown, true);
     document.addEventListener("keydown", handleKeyDown);
@@ -478,7 +515,7 @@ export function VirtualTable<TRow>({
       window.removeEventListener("resize", handleWindowResize);
       window.removeEventListener("scroll", handleWindowScroll, true);
     };
-  }, [closeColumnMenu, columnMenuState]);
+  }, [closeMenu, menuState]);
 
   const handleScroll = useCallback(() => {
     const element = scrollRef.current;
@@ -492,7 +529,7 @@ export function VirtualTable<TRow>({
       top: element.scrollTop,
     });
     if (!shouldIgnoreColumnMenuScrollClose(ignoreColumnMenuScrollCloseUntilRef.current)) {
-      setColumnMenuState(null);
+      setMenuState(null);
     }
   }, []);
 
@@ -517,10 +554,11 @@ export function VirtualTable<TRow>({
         return;
       }
 
-      columnMenuTriggerRef.current = trigger;
+      menuTriggerRef.current = trigger;
       ignoreColumnMenuScrollCloseUntilRef.current = getCurrentTime() + 100;
-      setColumnMenuState({
+      setMenuState({
         columnId: column.id,
+        kind: "column",
         ...clampColumnMenuPosition(coordinates.x, coordinates.y),
       });
     },
@@ -574,6 +612,20 @@ export function VirtualTable<TRow>({
     [openColumnMenu],
   );
 
+  const handleTableMenuButtonClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const rect = event.currentTarget.getBoundingClientRect();
+      menuTriggerRef.current = event.currentTarget;
+      ignoreColumnMenuScrollCloseUntilRef.current = getCurrentTime() + 100;
+      setMenuState({
+        kind: "table",
+        ...clampColumnMenuPosition(rect.left, rect.bottom),
+      });
+    },
+    [],
+  );
+
   const handleResizePointerDown = useCallback(
     (
       event: ReactPointerEvent<HTMLButtonElement>,
@@ -582,7 +634,7 @@ export function VirtualTable<TRow>({
     ) => {
       event.preventDefault();
       event.stopPropagation();
-      setColumnMenuState(null);
+      setMenuState(null);
       event.currentTarget.setPointerCapture?.(event.pointerId);
       setResizeState({
         columnId: column.id,
@@ -686,7 +738,7 @@ export function VirtualTable<TRow>({
     const { column, originalIndex, width } = entry;
     const hasMenuActions = hasColumnMenuActions(column, columnMenuOptions);
     const showMenuButton = isButtonMenuEnabled(columnMenuOptions) && hasMenuActions;
-    const isMenuOpen = columnMenuState?.columnId === column.id;
+    const isMenuOpen = menuState?.kind === "column" && menuState.columnId === column.id;
     const canResize = columnResizing && column.resizable !== false;
     const label = getColumnLabel(column);
     const menuId = getColumnMenuId(column.id);
@@ -694,7 +746,7 @@ export function VirtualTable<TRow>({
 
     return (
       <div
-        aria-colindex={originalIndex + 1}
+        aria-colindex={originalIndex + (showRowIndex ? 2 : 1)}
         aria-sort={column.sortable ? getAriaSort(activeState.sort, column.id) : undefined}
         className={cellClassName("mb-table__header-cell", column, {
           filtered: hasActiveColumnFilter(activeState.filter, column.id),
@@ -763,7 +815,7 @@ export function VirtualTable<TRow>({
 
     return (
       <div
-        aria-colindex={entry.originalIndex + 1}
+        aria-colindex={entry.originalIndex + (showRowIndex ? 2 : 1)}
         className={cellClassName("mb-table__cell", entry.column, { sticky })}
         key={entry.column.id}
         role="gridcell"
@@ -790,7 +842,7 @@ export function VirtualTable<TRow>({
         className="mb-table__scroll"
         onScroll={handleScroll}
         role="grid"
-        aria-colcount={columns.length}
+        aria-colcount={visibleColumns.length + (showRowIndex ? 1 : 0)}
         aria-rowcount={model.totalRowCount}
       >
         <div className="mb-table__surface" style={{ minWidth: totalColumnWidth }}>
@@ -799,6 +851,31 @@ export function VirtualTable<TRow>({
             role="row"
             style={{ gridTemplateColumns }}
           >
+            {showRowIndex ? (
+              <div
+                aria-colindex={1}
+                className={[
+                  "mb-table__header-cell",
+                  "mb-table__index-header",
+                  "mb-table__header-cell--sticky-left",
+                  menuState?.kind === "table" ? "mb-table__header-cell--menu-open" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                role="columnheader"
+                style={{ left: 0 }}
+              >
+                <button
+                  aria-controls={menuState?.kind === "table" ? tableMenuId : undefined}
+                  aria-expanded={menuState?.kind === "table"}
+                  aria-haspopup="dialog"
+                  aria-label="Open table options"
+                  className="mb-table__index-menu-trigger"
+                  onClick={handleTableMenuButtonClick}
+                  type="button"
+                />
+              </div>
+            ) : null}
             {columnEntries.left.map((entry) => renderHeaderCell(entry, "left"))}
             {renderSpacer("before", columnRange.offsetBefore)}
             {visibleCenterEntries.map((entry) => renderHeaderCell(entry, null))}
@@ -842,6 +919,16 @@ export function VirtualTable<TRow>({
                     style={{ gridTemplateColumns }}
                     tabIndex={interactive ? 0 : undefined}
                   >
+                    {showRowIndex ? (
+                      <div
+                        aria-colindex={1}
+                        className="mb-table__cell mb-table__index-cell mb-table__cell--sticky-left"
+                        role="rowheader"
+                        style={{ left: 0 }}
+                      >
+                        {rowIndex + 1}
+                      </div>
+                    ) : null}
                     {columnEntries.left.map((entry) => renderRowCell(entry, row, rowIndex, "left"))}
                     {renderSpacer("before", columnRange.offsetBefore)}
                     {visibleCenterEntries.map((entry) => renderRowCell(entry, row, rowIndex, null))}
@@ -862,22 +949,149 @@ export function VirtualTable<TRow>({
           {loadingState}
         </div>
       ) : null}
-      {columnMenuState && activeMenuColumn ? (
+      {menuState?.kind === "column" && activeMenuColumn ? (
         <ColumnMenu
           activeFilter={activeState.filter}
-          closeMenu={closeColumnMenu}
+          closeMenu={closeMenu}
           column={activeMenuColumn}
           id={getColumnMenuId(activeMenuColumn.id)}
           key={activeMenuColumn.id}
           menuOptions={columnMenuOptions}
-          menuRef={columnMenuRef}
+          menuRef={menuRef}
           rows={rows}
           setFilter={setFilter}
-          x={columnMenuState.x}
-          y={columnMenuState.y}
+          x={menuState.x}
+          y={menuState.y}
+        />
+      ) : null}
+      {menuState?.kind === "table" ? (
+        <TableOptionsMenu
+          columnOrder={activeState.columnOrder ?? []}
+          columnVisibility={activeState.columnVisibility ?? {}}
+          columns={columns}
+          id={tableMenuId}
+          menuRef={menuRef}
+          setColumnOrder={setColumnOrder}
+          setColumnVisibility={setColumnVisibility}
+          x={menuState.x}
+          y={menuState.y}
         />
       ) : null}
     </section>
+  );
+}
+
+function TableOptionsMenu<TRow>({
+  columnOrder,
+  columnVisibility,
+  columns,
+  id,
+  menuRef,
+  setColumnOrder,
+  setColumnVisibility,
+  x,
+  y,
+}: {
+  columnOrder: TableColumnOrderState;
+  columnVisibility: TableColumnVisibilityState;
+  columns: readonly TableColumn<TRow>[];
+  id: string;
+  menuRef: RefObject<HTMLDivElement | null>;
+  setColumnOrder: (columnOrder: TableColumnOrderState) => void;
+  setColumnVisibility: (columnVisibility: TableColumnVisibilityState) => void;
+  x: number;
+  y: number;
+}) {
+  const orderedColumns = resolveColumnOrder(columns, columnOrder);
+  const moveColumn = (columnId: string, offset: -1 | 1) => {
+    const ids = orderedColumns.map((column) => column.id);
+    const index = ids.indexOf(columnId);
+    const nextIndex = index + offset;
+
+    if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) {
+      return;
+    }
+
+    [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+    setColumnOrder(ids);
+  };
+
+  return (
+    <div
+      aria-label="Table options"
+      className="mb-table__column-menu mb-table__table-menu"
+      id={id}
+      ref={menuRef}
+      role="dialog"
+      style={{ left: x, top: y }}
+    >
+      <div className="mb-table__table-menu-title">Columns</div>
+      <div className="mb-table__table-menu-columns">
+        {orderedColumns.map((column, index) => {
+          const label = getColumnLabel(column);
+
+          return (
+            <div className="mb-table__table-menu-column" key={column.id}>
+              <label className="mb-table__table-menu-visibility">
+                <input
+                  checked={isColumnVisible(columnVisibility, column.id)}
+                  onChange={(event) =>
+                    setColumnVisibility({
+                      ...columnVisibility,
+                      [column.id]: event.currentTarget.checked,
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>{label}</span>
+              </label>
+              <div className="mb-table__table-menu-reorder">
+                <button
+                  aria-label={`Move ${label} up`}
+                  className="mb-table__table-menu-move"
+                  disabled={index === 0}
+                  onClick={() => moveColumn(column.id, -1)}
+                  type="button"
+                >
+                  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+                    <path d="M4 10 8 6l4 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" />
+                  </svg>
+                </button>
+                <button
+                  aria-label={`Move ${label} down`}
+                  className="mb-table__table-menu-move"
+                  disabled={index === orderedColumns.length - 1}
+                  onClick={() => moveColumn(column.id, 1)}
+                  type="button"
+                >
+                  <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+                    <path d="m4 6 4 4 4-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mb-table__table-menu-actions">
+        <button
+          className="mb-table__column-menu-button"
+          disabled={Object.values(columnVisibility).every((visible) => visible !== false)}
+          onClick={() => setColumnVisibility({})}
+          type="button"
+        >
+          Show all columns
+        </button>
+        <button
+          className="mb-table__column-menu-button"
+          disabled={columnOrder.length === 0}
+          onClick={() => setColumnOrder([])}
+          type="button"
+        >
+          Reset order
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1517,6 +1731,37 @@ function getColumnLabel<TRow>(column: TableColumn<TRow>) {
   return column.ariaLabel ?? column.id;
 }
 
+function resolveColumnOrder<TRow>(
+  columns: readonly TableColumn<TRow>[],
+  columnOrder?: TableColumnOrderState,
+): TableColumn<TRow>[] {
+  const remaining = new Map(columns.map((column) => [column.id, column]));
+  const ordered: TableColumn<TRow>[] = [];
+
+  for (const columnId of columnOrder ?? []) {
+    const column = remaining.get(columnId);
+    if (column) {
+      ordered.push(column);
+      remaining.delete(columnId);
+    }
+  }
+
+  for (const column of columns) {
+    if (remaining.has(column.id)) {
+      ordered.push(column);
+    }
+  }
+
+  return ordered;
+}
+
+function isColumnVisible(
+  columnVisibility: TableColumnVisibilityState | undefined,
+  columnId: string,
+) {
+  return columnVisibility?.[columnId] !== false;
+}
+
 function resolveColumnWidth<TRow>(column: TableColumn<TRow>, width?: number): number {
   return clampColumnWidth(column, width ?? column.width ?? defaultColumnWidth);
 }
@@ -1531,11 +1776,12 @@ function clampColumnWidth<TRow>(column: TableColumn<TRow> | undefined, width: nu
 function createColumnEntries<TRow>(
   columns: readonly TableColumn<TRow>[],
   columnWidths: readonly number[],
+  leftStartOffset = 0,
 ) {
   const left: ColumnEntry<TRow>[] = [];
   const center: ColumnEntry<TRow>[] = [];
   const right: ColumnEntry<TRow>[] = [];
-  let leftOffset = 0;
+  let leftOffset = leftStartOffset;
 
   columns.forEach((column, originalIndex) => {
     const entry: ColumnEntry<TRow> = {
@@ -1581,6 +1827,7 @@ function createColumnEntries<TRow>(
 }
 
 function createGridTemplateColumns(
+  rowIndexWidth: number,
   leftWidths: readonly number[],
   offsetBefore: number,
   columnWidths: readonly number[],
@@ -1588,6 +1835,7 @@ function createGridTemplateColumns(
   rightWidths: readonly number[],
 ) {
   return [
+    rowIndexWidth > 0 ? `${rowIndexWidth}px` : null,
     ...leftWidths.map((width) => `${width}px`),
     offsetBefore > 0 ? `${offsetBefore}px` : null,
     ...columnWidths.map((width) => `${width}px`),

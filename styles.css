@@ -155,6 +155,41 @@
   text-overflow: ellipsis;
 }
 
+.mb-table__index-header,
+.mb-table__index-cell {
+  justify-content: center;
+  padding: 0;
+  text-align: center;
+}
+
+.mb-table__index-header {
+  z-index: 6;
+}
+
+.mb-table__index-cell {
+  color: var(--mb-table-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  z-index: 2;
+}
+
+.mb-table__index-menu-trigger {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  height: 100%;
+  padding: 0;
+  width: 100%;
+}
+
+.mb-table__index-menu-trigger:hover,
+.mb-table__index-menu-trigger:focus-visible {
+  background: #edf6f5;
+  outline: 1px solid #52a8a0;
+  outline-offset: -1px;
+}
+
 .mb-table__sort-indicator {
   align-items: center;
   color: var(--mb-table-muted);
@@ -304,6 +339,93 @@
   color: var(--mb-table-muted);
   cursor: not-allowed;
   opacity: 0.56;
+}
+
+.mb-table__table-menu {
+  max-height: min(70vh, 480px);
+  overflow: auto;
+}
+
+.mb-table__table-menu-title {
+  color: var(--mb-table-muted);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.mb-table__table-menu-columns {
+  display: grid;
+  gap: 2px;
+}
+
+.mb-table__table-menu-column {
+  align-items: center;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 32px;
+  padding: 0 4px 0 8px;
+}
+
+.mb-table__table-menu-column:hover {
+  background: #edf6f5;
+}
+
+.mb-table__table-menu-visibility {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mb-table__table-menu-visibility span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mb-table__table-menu-reorder {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.mb-table__table-menu-move {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--mb-table-muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.mb-table__table-menu-move:hover:not(:disabled),
+.mb-table__table-menu-move:focus-visible {
+  background: #ffffff;
+  color: var(--mb-table-text);
+  outline: none;
+}
+
+.mb-table__table-menu-move:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
+.mb-table__table-menu-actions {
+  border-top: 1px solid var(--mb-table-cell-border);
+  display: grid;
+  gap: 2px;
+  margin-top: 4px;
+  padding-top: 6px;
 }
 
 .mb-table__column-menu-field {

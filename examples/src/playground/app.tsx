@@ -202,7 +202,7 @@ function OverviewPage({
       <div className="split-layout">
         <TablePanel
           title="Pipeline overview"
-          description="A 50,000-row sales pipeline with typed columns, virtual rows, filtering, sortable headers, and multi-row selection."
+          description="A 50,000-row sales pipeline with row indices, table-level column controls, typed filtering, sortable headers, and multi-row selection."
         >
           <VirtualTable
             ariaLabel="Pipeline overview"
@@ -223,6 +223,7 @@ function OverviewPage({
             rowKey="id"
             rows={rows}
             selectionMode="multiple"
+            showRowIndex
             state={{ filter, selection: { selectedRowKeys } }}
           />
         </TablePanel>
