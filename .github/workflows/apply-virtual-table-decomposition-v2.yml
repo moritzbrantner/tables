@@ -1,0 +1,111 @@
+name: Apply structural VirtualTable decomposition
+
+on:
+  push:
+    branches:
+      - refactor/decompose-virtual-table
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/decompose-virtual-table
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Apply structural extraction
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          path = Path("src/react.tsx")
+          text = path.read_text()
+
+          for line in [
+              '  createDefaultTableState,\n',
+              '  hasControlledStateKey,\n',
+              '  mergeControlledTableState,\n',
+              '  updateTableState,\n',
+              '  type TableDataColumn,\n',
+              '  type TableColumnOrderState,\n',
+              '  type TableColumnVisibilityState,\n',
+              '  type TableStateChangeType,\n',
+          ]:
+              text = replace_once(text, line, '', f'remove import {line.strip()}')
+
+          marker = 'import { createVariableVirtualLayout, getFixedVirtualRange } from "./virtualization";\n'
+          imports = '''import { isColumnVisible, resolveColumnOrder } from "./column-layout";
+          import { getColumnLabel, type TableColumn } from "./react-column";
+          import { TableOptionsMenu } from "./table-options";
+          import { useTableStateController } from "./use-table-state";
+          import { createVariableVirtualLayout, getFixedVirtualRange } from "./virtualization";
+          '''.replace('          ', '')
+          text = replace_once(text, marker, imports, 'add focused module imports')
+
+          column_start = text.index('export type TableColumn<TRow, TValue = unknown> =')
+          column_end = text.index('export type ColumnResizeMode =', column_start)
+          text = (
+              text[:column_start]
+              + 'export { createTableColumnHelper } from "./react-column";\n'
+              + 'export type { TableColumn } from "./react-column";\n\n'
+              + text[column_end:]
+          )
+
+          state_start = text.index('  const [internalState, setInternalState] = useState(')
+          state_end = text.index('  const orderedColumns = useMemo(', state_start)
+          state = '''  const {
+            activeState,
+            setColumnOrder,
+            setColumnSizing,
+            setColumnVisibility,
+            setFilter,
+            setSelection,
+            setSort,
+          } = useTableStateController({ initialState, onStateChange, state });
+          '''.replace('          ', '')
+          text = text[:state_start] + state + text[state_end:]
+
+          setters_start = text.index('  const updateStateField = useCallback(')
+          setters_end = text.index('  useLayoutEffect(() => {\n    onModelChange?.(model);', setters_start)
+          text = text[:setters_start] + text[setters_end:]
+
+          menu_start = text.index('function TableOptionsMenu<TRow>(')
+          menu_end = text.index('function ColumnMenu<TRow>(', menu_start)
+          text = text[:menu_start] + text[menu_end:]
+
+          helpers_start = text.index('function getColumnLabel<TRow>(')
+          helpers_end = text.index('function resolveColumnWidth<TRow>(', helpers_start)
+          text = text[:helpers_start] + text[helpers_end:]
+
+          path.write_text(text)
+          PY
+          rm -f .github/workflows/apply-virtual-table-decomposition.yml
+          rm -f .github/workflows/apply-virtual-table-decomposition-v2.yml
+      - name: Verify decomposition
+        run: |
+          bun install --frozen-lockfile
+          bun run lint
+          bun run check-types
+          bun run test
+          bun run build
+      - name: Commit decomposition
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Decompose VirtualTable ownership"
+          git push origin HEAD:refactor/decompose-virtual-table
