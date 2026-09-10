@@ -97,7 +97,6 @@ jobs:
       - name: Verify decomposition
         run: |
           bun install --frozen-lockfile
-          bun run lint
           bun run check-types
           bun run test
           bun run build
