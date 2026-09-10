@@ -162,7 +162,7 @@ const [state, setState] = useState<Partial<TableState<Order>>>({
 />;
 ```
 
-Each state field is controlled independently. If `state.sort` is supplied, sort is controlled. If `state.columnSizing` is omitted, column sizing remains uncontrolled.
+Each state field is controlled independently. If `state.sort` is supplied, sort is controlled. Column sizing, visibility, and order remain uncontrolled when their corresponding `state.columnSizing`, `state.columnVisibility`, or `state.columnOrder` fields are omitted.
 
 ## Manual Mode
 
@@ -199,6 +199,21 @@ const columns: TableColumn<Order>[] = [
 ```
 
 Selection lives in `state.selection.selectedRowKeys`. Column widths live in `state.columnSizing`. Resizing clamps to `column.minWidth ?? 72` and `column.maxWidth ?? 640`.
+
+## Row Index and Table Options
+
+Pass `showRowIndex` to add a sticky, one-based row index on the left. The index header is visually empty and acts as the table-level options trigger. Its menu can show or hide columns, move them up or down, show all columns, and reset column order.
+
+```tsx
+<VirtualTable
+  columns={columns}
+  rowKey="id"
+  rows={rows}
+  showRowIndex
+/>;
+```
+
+Column visibility lives in `state.columnVisibility`, where `false` hides a column. Display order lives in `state.columnOrder`; omitted column ids are appended in declaration order. Both fields use the same independently controlled state model as sorting, filtering, selection, and column sizing.
 
 ## Column Menus
 

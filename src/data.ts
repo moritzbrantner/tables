@@ -72,17 +72,23 @@ export type TableSelectionState = {
   selectedRowKeys: readonly TableRowKey[];
 };
 
+export type TableColumnOrderState = readonly string[];
 export type TableColumnSizingState = Record<string, number>;
+export type TableColumnVisibilityState = Record<string, boolean>;
 
 export type TableState<TRow> = {
+  columnOrder?: TableColumnOrderState;
   columnSizing: TableColumnSizingState;
+  columnVisibility?: TableColumnVisibilityState;
   filter: TableFilter<TRow> | null;
   selection: TableSelectionState;
   sort: TableSortState;
 };
 
 export type TableStateChangeType =
+  | "columnOrder"
   | "columnSizing"
+  | "columnVisibility"
   | "filter"
   | "selection"
   | "sort";
@@ -274,7 +280,9 @@ export function createDefaultTableState<TRow>(
   initialState?: Partial<TableState<TRow>>,
 ): TableState<TRow> {
   return {
+    columnOrder: initialState?.columnOrder ?? [],
     columnSizing: initialState?.columnSizing ?? {},
+    columnVisibility: initialState?.columnVisibility ?? {},
     filter: initialState?.filter ?? null,
     selection: initialState?.selection ?? { selectedRowKeys: [] },
     sort: initialState?.sort ?? [],
@@ -286,9 +294,15 @@ export function mergeControlledTableState<TRow>(
   controlledState: Partial<TableState<TRow>> | undefined,
 ): TableState<TRow> {
   return {
+    columnOrder: hasControlledStateKey(controlledState, "columnOrder")
+      ? controlledState.columnOrder ?? []
+      : internalState.columnOrder ?? [],
     columnSizing: hasControlledStateKey(controlledState, "columnSizing")
       ? controlledState.columnSizing ?? {}
       : internalState.columnSizing,
+    columnVisibility: hasControlledStateKey(controlledState, "columnVisibility")
+      ? controlledState.columnVisibility ?? {}
+      : internalState.columnVisibility ?? {},
     filter: hasControlledStateKey(controlledState, "filter")
       ? controlledState.filter ?? null
       : internalState.filter,
