@@ -9,7 +9,7 @@ export {
   hasControlledStateKey,
   mergeControlledTableState,
   updateTableState,
-  type TableColumn,
+  type TableDataColumn,
   type TableColumnAlign,
   type TableColumnFilter,
   type TableColumnOrderState,
@@ -33,8 +33,10 @@ export {
 export {
   DataTable,
   VirtualTable,
+  createTableColumnHelper,
   type ColumnResizeMode,
   type DataTableProps,
+  type TableColumn,
   type RowKey,
   type TableColumnMenuOptions,
   type TableColumnMenuTrigger,
@@ -44,6 +46,7 @@ export {
 } from "./react-rust";
 export {
   Table,
+  createTableColumnDefHelper,
   type TableAlign,
   type TableColumnDef,
   type TableDensity,

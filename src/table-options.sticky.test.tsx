@@ -1,8 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TableColumn } from "./data";
-import { VirtualTable } from "./react";
+import { VirtualTable, type TableColumn } from "./react";
 
 type Row = {
   center: string;

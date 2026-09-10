@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 import { getTableQueryKernel } from "./query-kernel";
 
 export type TableColumnAlign = "center" | "end" | "start";
@@ -32,15 +30,13 @@ export type TableColumnFilter = {
   value?: string | number | boolean | Date | null | readonly unknown[];
 };
 
-export type TableColumn<TRow, TValue = unknown> = {
+export type TableDataColumn<TRow, TValue = unknown> = {
   align?: TableColumnAlign;
   ariaLabel?: string;
   accessor: keyof TRow | ((row: TRow, rowIndex: number) => TValue);
-  cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
   className?: string;
   filterable?: boolean;
   filterOptions?: readonly string[];
-  header: ReactNode;
   id: string;
   maxWidth?: number;
   minWidth?: number;
@@ -99,14 +95,14 @@ export type TableStateChange<TRow> = {
 };
 
 export type TableModelOptions<TRow> = {
-  columns: readonly TableColumn<TRow>[];
+  columns: readonly TableDataColumn<TRow>[];
   filter?: TableFilter<TRow> | null;
   rows: readonly TRow[];
   sort?: TableSortState;
 };
 
 export type TableModel<TRow> = {
-  columns: readonly TableColumn<TRow>[];
+  columns: readonly TableDataColumn<TRow>[];
   filteredRowCount: number;
   rows: readonly TRow[];
   sortedRowCount: number;
@@ -152,7 +148,7 @@ export function createTableModel<TRow>({
 
 export function applyTableFilter<TRow>(
   rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
+  columns: readonly TableDataColumn<TRow>[],
   filter: TableFilter<TRow>,
 ): TRow[] {
   const query = filter.query?.trim() ?? "";
@@ -189,7 +185,7 @@ export function applyTableFilter<TRow>(
 
 export function applyTableSort<TRow>(
   rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
+  columns: readonly TableDataColumn<TRow>[],
   sort: TableSortState,
 ): TRow[] {
   if (sort.length === 0) {
@@ -205,7 +201,7 @@ export function applyTableSort<TRow>(
 }
 
 export function getColumnValue<TRow, TValue>(
-  column: TableColumn<TRow, TValue>,
+  column: TableDataColumn<TRow, TValue>,
   row: TRow,
   rowIndex: number,
 ): TValue {
@@ -335,7 +331,7 @@ export function updateTableState<TRow, TKey extends keyof TableState<TRow>>(
 
 function applyTableFilterTypeScript<TRow>(
   rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
+  columns: readonly TableDataColumn<TRow>[],
   filter: TableFilter<TRow>,
 ): TRow[] {
   const query = filter.query?.trim() ?? "";
@@ -366,7 +362,7 @@ function applyTableFilterTypeScript<TRow>(
 
 function applyTableSortTypeScript<TRow>(
   rows: readonly TRow[],
-  columns: readonly TableColumn<TRow>[],
+  columns: readonly TableDataColumn<TRow>[],
   sort: TableSortState,
 ): TRow[] {
   const rules = sort.flatMap((rule) => {
@@ -530,9 +526,9 @@ function compareForSort(left: unknown, right: unknown, direction: TableSortDirec
 }
 
 function getFilterColumns<TRow>(
-  columns: readonly TableColumn<TRow>[],
+  columns: readonly TableDataColumn<TRow>[],
   columnIds?: readonly string[],
-): readonly TableColumn<TRow>[] {
+): readonly TableDataColumn<TRow>[] {
   if (!columnIds || columnIds.length === 0) {
     return columns;
   }

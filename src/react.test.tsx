@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { VirtualTable } from "./react";
-import type { TableColumn, TableState } from "./data";
+import { VirtualTable, type TableColumn } from "./react";
+import type { TableState } from "./data";
 
 type Row = {
   id: string;

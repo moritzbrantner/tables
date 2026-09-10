@@ -22,7 +22,7 @@ import {
   hasControlledStateKey,
   mergeControlledTableState,
   updateTableState,
-  type TableColumn,
+  type TableDataColumn,
   type TableColumnFilter,
   type TableColumnOrderState,
   type TableColumnType,
@@ -44,6 +44,29 @@ export type RowKey<TRow> = keyof TRow | ((row: TRow, rowIndex: number) => TableR
 export type TableProcessingMode = "client" | "manual";
 
 export type TableSelectionMode = "multiple" | "none" | "single";
+
+export type TableColumn<TRow, TValue = unknown> = TableDataColumn<TRow, TValue> & {
+  cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
+  header: ReactNode;
+};
+
+export function createTableColumnHelper<TRow>() {
+  function accessor<TKey extends keyof TRow>(
+    accessorKey: TKey,
+    column: Omit<TableColumn<TRow, TRow[TKey]>, "accessor">,
+  ): TableColumn<TRow, TRow[TKey]> {
+    return { ...column, accessor: accessorKey };
+  }
+
+  function accessorFn<TValue>(
+    accessorFunction: (row: TRow, rowIndex: number) => TValue,
+    column: Omit<TableColumn<TRow, TValue>, "accessor">,
+  ): TableColumn<TRow, TValue> {
+    return { ...column, accessor: accessorFunction };
+  }
+
+  return { accessor, accessorFn };
+}
 
 export type ColumnResizeMode = "onChange" | "onEnd";
 
@@ -1898,7 +1921,8 @@ function getRowKey<TRow>(rowKey: RowKey<TRow>, row: TRow, rowIndex: number): Tab
     return rowKey(row, rowIndex);
   }
 
-  return String(row[rowKey]);
+  const value = row[rowKey];
+  return typeof value === "number" || typeof value === "string" ? value : String(value);
 }
 
 function selectRowRange<TRow>(
