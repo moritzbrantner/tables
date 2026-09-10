@@ -79,12 +79,16 @@ jobs:
 
           for file_name in ["src/query-kernel.ts", "src/wasm-internal.ts"]:
               path = Path(file_name)
-              text = path.read_text().replace('TableColumn', 'TableDataColumn')
+              text = path.read_text()
+              text = text.replace('TableColumn<', 'TableDataColumn<')
+              text = text.replace('TableColumn,', 'TableDataColumn,')
               path.write_text(text)
 
           for file_name in ["src/data.test.ts", "src/wasm-parity.test.ts"]:
               path = Path(file_name)
-              text = path.read_text().replace('TableColumn', 'TableDataColumn')
+              text = path.read_text()
+              text = text.replace('TableColumn<', 'TableDataColumn<')
+              text = text.replace('TableColumn,', 'TableDataColumn,')
               text = re.sub(r'(?m)^\s*header: "[^"]+",\n', '', text)
               text = re.sub(r', header: "[^"]+"', '', text)
               path.write_text(text)
@@ -126,19 +130,27 @@ jobs:
           )
           react_path.write_text(react)
 
+          for file_name in ["src/react.test.tsx", "src/react.typed-filter.test.tsx", "src/table-options.sticky.test.tsx"]:
+              path = Path(file_name)
+              text = path.read_text()
+              text = text.replace('import { VirtualTable } from "./react";', 'import { VirtualTable, type TableColumn } from "./react";')
+              text = text.replace('import type { TableColumn, TableState } from "./data";', 'import type { TableState } from "./data";')
+              text = text.replace('import type { TableColumn } from "./data";\n', '')
+              path.write_text(text)
+
           react_rust_path = Path("src/react-rust.tsx")
           react_rust = react_rust_path.read_text()
           react_rust = replace_once(
               react_rust,
               '  ColumnResizeMode,\n',
               '  ColumnResizeMode,\n  TableColumn,\n',
-              're-export React column',
+              're-export React column type',
           )
           react_rust = replace_once(
               react_rust,
-              '  DataTableProps,\n',
-              '  DataTableProps,\n  createTableColumnHelper,\n',
-              're-export React column helper',
+              '  VirtualTableProps,\n} from "./react";\n\nexport function DataTable',
+              '  VirtualTableProps,\n} from "./react";\n\nexport { createTableColumnHelper } from "./react";\n\nexport function DataTable',
+              're-export React helper',
           )
           react_rust_path.write_text(react_rust)
 
@@ -196,42 +208,29 @@ jobs:
           table = replace_once(table, helper_marker, helper_marker + semantic_helper, 'insert semantic helper')
           table_path.write_text(table)
 
-          typecheck_path = Path("src/column-inference.typecheck.tsx")
-          typecheck_path.write_text('''import { createTableColumnHelper } from "./react";
+          Path("src/column-inference.typecheck.tsx").write_text('''import { createTableColumnHelper } from "./react";
           import { createTableColumnDefHelper } from "./table";
 
           type Row = { id: string; total: number };
 
           const grid = createTableColumnHelper<Row>();
           grid.accessor("total", {
-            header: "Total",
             cell: (value) => {
               const typed: number = value;
               return typed.toFixed(2);
             },
-          });
-          grid.accessorFn((row) => row.id.length, {
-            header: "ID length",
-            cell: (value) => {
-              const typed: number = value;
-              return typed;
-            },
+            header: "Total",
+            id: "total",
           });
 
           const semantic = createTableColumnDefHelper<Row>();
           semantic.accessor("total", {
-            header: "Total",
             cell: (value) => {
               const typed: number = value;
               return typed.toFixed(2);
             },
-          });
-          semantic.accessorFn((row) => row.id, {
-            header: "ID",
-            cell: (value) => {
-              const typed: string = value;
-              return typed;
-            },
+            header: "Total",
+            id: "total",
           });
           '''.replace('          ', ''))
           PY
