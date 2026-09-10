@@ -1,0 +1,446 @@
+name: Apply VirtualTable decomposition
+
+on:
+  push:
+    branches:
+      - refactor/decompose-virtual-table
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/decompose-virtual-table
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Apply guarded decomposition
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          Path("src/react-column.ts").write_text('''import type { ReactNode } from "react";
+
+          import type { TableDataColumn } from "./data";
+
+          export type TableColumn<TRow, TValue = unknown> = TableDataColumn<TRow, TValue> & {
+            cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
+            header: ReactNode;
+          };
+
+          export function createTableColumnHelper<TRow>() {
+            function accessor<TKey extends keyof TRow>(
+              accessorKey: TKey,
+              column: Omit<TableColumn<TRow, TRow[TKey]>, "accessor">,
+            ): TableColumn<TRow, TRow[TKey]> {
+              return { ...column, accessor: accessorKey };
+            }
+
+            function accessorFn<TValue>(
+              accessorFunction: (row: TRow, rowIndex: number) => TValue,
+              column: Omit<TableColumn<TRow, TValue>, "accessor">,
+            ): TableColumn<TRow, TValue> {
+              return { ...column, accessor: accessorFunction };
+            }
+
+            return { accessor, accessorFn };
+          }
+
+          export function getColumnLabel<TRow>(column: TableColumn<TRow>) {
+            if (typeof column.header === "string" || typeof column.header === "number") {
+              return String(column.header);
+            }
+
+            return column.ariaLabel ?? column.id;
+          }
+          '''.replace('          ', ''))
+
+          Path("src/column-layout.ts").write_text('''import type {
+            TableColumnOrderState,
+            TableColumnSticky,
+            TableColumnVisibilityState,
+          } from "./data";
+
+          type LayoutColumn = {
+            id: string;
+            sticky?: TableColumnSticky;
+          };
+
+          export function resolveColumnOrder<TColumn extends { id: string }>(
+            columns: readonly TColumn[],
+            columnOrder?: TableColumnOrderState,
+          ): TColumn[] {
+            const remaining = new Map(columns.map((column) => [column.id, column]));
+            const ordered: TColumn[] = [];
+
+            for (const columnId of columnOrder ?? []) {
+              const column = remaining.get(columnId);
+              if (column) {
+                ordered.push(column);
+                remaining.delete(columnId);
+              }
+            }
+
+            for (const column of columns) {
+              if (remaining.has(column.id)) {
+                ordered.push(column);
+              }
+            }
+
+            return ordered;
+          }
+
+          export function resolveRenderedColumnOrder<TColumn extends LayoutColumn>(
+            columns: readonly TColumn[],
+            columnOrder?: TableColumnOrderState,
+          ): TColumn[] {
+            const orderedColumns = resolveColumnOrder(columns, columnOrder);
+            const left: TColumn[] = [];
+            const center: TColumn[] = [];
+            const right: TColumn[] = [];
+
+            for (const column of orderedColumns) {
+              const stickyGroup = getColumnStickyGroup(column);
+
+              if (stickyGroup === "left") {
+                left.push(column);
+              } else if (stickyGroup === "right") {
+                right.push(column);
+              } else {
+                center.push(column);
+              }
+            }
+
+            return [...left, ...center, ...right];
+          }
+
+          export function getColumnStickyGroup(column: Pick<LayoutColumn, "sticky">) {
+            return column.sticky === "left" ? "left" : column.sticky === "right" ? "right" : "center";
+          }
+
+          export function isColumnVisible(
+            columnVisibility: TableColumnVisibilityState | undefined,
+            columnId: string,
+          ) {
+            return columnVisibility?.[columnId] !== false;
+          }
+          '''.replace('          ', ''))
+
+          Path("src/use-table-state.ts").write_text('''import { useCallback, useMemo, useState } from "react";
+
+          import {
+            createDefaultTableState,
+            hasControlledStateKey,
+            mergeControlledTableState,
+            updateTableState,
+            type TableColumnOrderState,
+            type TableColumnVisibilityState,
+            type TableFilter,
+            type TableRowKey,
+            type TableSortState,
+            type TableState,
+            type TableStateChange,
+            type TableStateChangeType,
+          } from "./data";
+
+          export function useTableStateController<TRow>({
+            initialState,
+            onStateChange,
+            state,
+          }: {
+            initialState?: Partial<TableState<TRow>>;
+            onStateChange?: (change: TableStateChange<TRow>) => void;
+            state?: Partial<TableState<TRow>>;
+          }) {
+            const [internalState, setInternalState] = useState(() => createDefaultTableState(initialState));
+            const activeState = useMemo(
+              () => mergeControlledTableState(internalState, state),
+              [internalState, state],
+            );
+
+            const updateStateField = useCallback(
+              <TKey extends keyof TableState<TRow>>(
+                key: TKey,
+                value: TableState<TRow>[TKey],
+                changeType: TableStateChangeType,
+              ) => {
+                const nextState = updateTableState(activeState, key, value);
+
+                if (!hasControlledStateKey(state, key)) {
+                  setInternalState((current) => updateTableState(current, key, value));
+                }
+
+                onStateChange?.({ state: nextState, type: changeType });
+              },
+              [activeState, onStateChange, state],
+            );
+
+            const setSort = useCallback(
+              (sort: TableSortState) => updateStateField("sort", sort, "sort"),
+              [updateStateField],
+            );
+            const setFilter = useCallback(
+              (filter: TableFilter<TRow> | null) => updateStateField("filter", filter, "filter"),
+              [updateStateField],
+            );
+            const setSelection = useCallback(
+              (selectedRowKeys: readonly TableRowKey[]) =>
+                updateStateField("selection", { selectedRowKeys }, "selection"),
+              [updateStateField],
+            );
+            const setColumnOrder = useCallback(
+              (columnOrder: TableColumnOrderState) =>
+                updateStateField("columnOrder", columnOrder, "columnOrder"),
+              [updateStateField],
+            );
+            const setColumnSizing = useCallback(
+              (columnSizing: Record<string, number>) =>
+                updateStateField("columnSizing", columnSizing, "columnSizing"),
+              [updateStateField],
+            );
+            const setColumnVisibility = useCallback(
+              (columnVisibility: TableColumnVisibilityState) =>
+                updateStateField("columnVisibility", columnVisibility, "columnVisibility"),
+              [updateStateField],
+            );
+
+            return {
+              activeState,
+              setColumnOrder,
+              setColumnSizing,
+              setColumnVisibility,
+              setFilter,
+              setSelection,
+              setSort,
+            };
+          }
+          '''.replace('          ', ''))
+
+          Path("src/table-options.tsx").write_text('''import type { RefObject } from "react";
+
+          import {
+            getColumnStickyGroup,
+            isColumnVisible,
+            resolveRenderedColumnOrder,
+          } from "./column-layout";
+          import type { TableColumnOrderState, TableColumnVisibilityState } from "./data";
+          import { getColumnLabel, type TableColumn } from "./react-column";
+
+          export function TableOptionsMenu<TRow>({
+            columnOrder,
+            columnVisibility,
+            columns,
+            id,
+            menuRef,
+            setColumnOrder,
+            setColumnVisibility,
+            x,
+            y,
+          }: {
+            columnOrder: TableColumnOrderState;
+            columnVisibility: TableColumnVisibilityState;
+            columns: readonly TableColumn<TRow>[];
+            id: string;
+            menuRef: RefObject<HTMLDivElement | null>;
+            setColumnOrder: (columnOrder: TableColumnOrderState) => void;
+            setColumnVisibility: (columnVisibility: TableColumnVisibilityState) => void;
+            x: number;
+            y: number;
+          }) {
+            const orderedColumns = resolveRenderedColumnOrder(columns, columnOrder);
+            const moveColumn = (columnId: string, offset: -1 | 1) => {
+              const ids = orderedColumns.map((column) => column.id);
+              const index = ids.indexOf(columnId);
+              const nextIndex = index + offset;
+              const column = orderedColumns[index];
+              const nextColumn = orderedColumns[nextIndex];
+
+              if (
+                !column ||
+                !nextColumn ||
+                getColumnStickyGroup(column) !== getColumnStickyGroup(nextColumn)
+              ) {
+                return;
+              }
+
+              [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+              setColumnOrder(ids);
+            };
+
+            return (
+              <div
+                aria-label="Table options"
+                className="mb-table__column-menu mb-table__table-menu"
+                id={id}
+                ref={menuRef}
+                role="dialog"
+                style={{ left: x, top: y }}
+              >
+                <div className="mb-table__table-menu-title">Columns</div>
+                <div className="mb-table__table-menu-columns">
+                  {orderedColumns.map((column, index) => {
+                    const label = getColumnLabel(column);
+                    const stickyGroup = getColumnStickyGroup(column);
+                    const previousColumn = orderedColumns[index - 1];
+                    const nextColumn = orderedColumns[index + 1];
+                    const canMoveUp =
+                      previousColumn !== undefined && getColumnStickyGroup(previousColumn) === stickyGroup;
+                    const canMoveDown =
+                      nextColumn !== undefined && getColumnStickyGroup(nextColumn) === stickyGroup;
+
+                    return (
+                      <div className="mb-table__table-menu-column" key={column.id}>
+                        <label className="mb-table__table-menu-visibility">
+                          <input
+                            checked={isColumnVisible(columnVisibility, column.id)}
+                            onChange={(event) =>
+                              setColumnVisibility({
+                                ...columnVisibility,
+                                [column.id]: event.currentTarget.checked,
+                              })
+                            }
+                            type="checkbox"
+                          />
+                          <span>{label}</span>
+                        </label>
+                        <div className="mb-table__table-menu-reorder">
+                          <button
+                            aria-label={`Move ${label} up`}
+                            className="mb-table__table-menu-move"
+                            disabled={!canMoveUp}
+                            onClick={() => moveColumn(column.id, -1)}
+                            type="button"
+                          >
+                            <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+                              <path d="M4 10 8 6l4 4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" />
+                            </svg>
+                          </button>
+                          <button
+                            aria-label={`Move ${label} down`}
+                            className="mb-table__table-menu-move"
+                            disabled={!canMoveDown}
+                            onClick={() => moveColumn(column.id, 1)}
+                            type="button"
+                          >
+                            <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+                              <path d="m4 6 4 4 4-4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mb-table__table-menu-actions">
+                  <button
+                    className="mb-table__column-menu-button"
+                    disabled={Object.values(columnVisibility).every((visible) => visible !== false)}
+                    onClick={() => setColumnVisibility({})}
+                    type="button"
+                  >
+                    Show all columns
+                  </button>
+                  <button
+                    className="mb-table__column-menu-button"
+                    disabled={columnOrder.length === 0}
+                    onClick={() => setColumnOrder([])}
+                    type="button"
+                  >
+                    Reset order
+                  </button>
+                </div>
+              </div>
+            );
+          }
+          '''.replace('          ', ''))
+
+          path = Path("src/react.tsx")
+          text = path.read_text()
+
+          for line in [
+              '  createDefaultTableState,\n',
+              '  hasControlledStateKey,\n',
+              '  mergeControlledTableState,\n',
+              '  updateTableState,\n',
+              '  type TableDataColumn,\n',
+              '  type TableColumnOrderState,\n',
+              '  type TableColumnVisibilityState,\n',
+              '  type TableStateChangeType,\n',
+          ]:
+              text = replace_once(text, line, '', f'remove import {line.strip()}')
+
+          imports_marker = 'import { createVariableVirtualLayout, getFixedVirtualRange } from "./virtualization";\n'
+          new_imports = '''import { isColumnVisible, resolveColumnOrder } from "./column-layout";
+          import { getColumnLabel, type TableColumn } from "./react-column";
+          import { TableOptionsMenu } from "./table-options";
+          import { useTableStateController } from "./use-table-state";
+          import { createVariableVirtualLayout, getFixedVirtualRange } from "./virtualization";
+          '''.replace('          ', '')
+          text = replace_once(text, imports_marker, new_imports, 'add decomposition imports')
+
+          column_start = text.index('export type TableColumn<TRow, TValue = unknown> =')
+          column_end = text.index('export type ColumnResizeMode =', column_start)
+          text = text[:column_start] + 'export { createTableColumnHelper } from "./react-column";\nexport type { TableColumn } from "./react-column";\n\n' + text[column_end:]
+
+          state_old = '''  const [internalState, setInternalState] = useState(() =>
+            createDefaultTableState(initialState),
+          );
+          const activeState = useMemo(
+            () => mergeControlledTableState(internalState, state),
+            [internalState, state],
+          );
+          '''.replace('          ', '')
+          state_new = '''  const {
+            activeState,
+            setColumnOrder,
+            setColumnSizing,
+            setColumnVisibility,
+            setFilter,
+            setSelection,
+            setSort,
+          } = useTableStateController({ initialState, onStateChange, state });
+          '''.replace('          ', '')
+          text = replace_once(text, state_old, state_new, 'replace state initialization')
+
+          setters_start = text.index('  const updateStateField = useCallback(')
+          setters_end = text.index('  useLayoutEffect(() => {\n    onModelChange?.(model);', setters_start)
+          text = text[:setters_start] + text[setters_end:]
+
+          menu_start = text.index('function TableOptionsMenu<TRow>(')
+          menu_end = text.index('function ColumnMenu<TRow>(', menu_start)
+          text = text[:menu_start] + text[menu_end:]
+
+          helpers_start = text.index('function getColumnLabel<TRow>(')
+          helpers_end = text.index('function resolveColumnWidth<TRow>(', helpers_start)
+          text = text[:helpers_start] + text[helpers_end:]
+
+          path.write_text(text)
+          PY
+          rm -f .github/workflows/apply-virtual-table-decomposition.yml
+      - name: Verify decomposition
+        run: |
+          bun install --frozen-lockfile
+          bun run lint
+          bun run check-types
+          bun run test
+          bun run build
+      - name: Commit decomposition
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Decompose VirtualTable ownership"
+          git push origin HEAD:refactor/decompose-virtual-table
