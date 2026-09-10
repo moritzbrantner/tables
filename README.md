@@ -4,6 +4,8 @@ React table primitives for both ordinary document-flow tables and large interact
 
 `tables` sits alongside `charts`, `maps`, and `diagrams`. It should make the simple case simpler than hand-written table markup while keeping virtualization, querying, selection, resizing, and server-driven state available when a dataset actually needs them. The package is self-contained: built-in table query semantics live in its own Rust core rather than an underlying visualization/query engine.
 
+See [Table architecture](docs/architecture.md) for the canonical ownership, model, dependency, and non-goal decisions.
+
 ## Choose the smallest table that fits
 
 | Need | Use |
