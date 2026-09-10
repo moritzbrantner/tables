@@ -80,6 +80,7 @@ export type VirtualTableProps<TRow> = {
 
 export type TableColumnMenuOptions = {
   filter?: boolean;
+  /** @deprecated Sorting is controlled by the dedicated header sort button. */
   sort?: boolean;
   trigger?: TableColumnMenuTrigger;
 };
@@ -104,7 +105,6 @@ type ColumnMenuState = {
 
 type ResolvedColumnMenuOptions = {
   filter: boolean;
-  sort: boolean;
   trigger: TableColumnMenuTrigger;
 };
 
@@ -709,6 +709,7 @@ export function VirtualTable<TRow>({
         style={getStickyStyle(entry)}
         tabIndex={isContextMenuEnabled(columnMenuOptions) && hasMenuActions ? 0 : undefined}
       >
+        <span className="mb-table__header-label">{column.header}</span>
         {column.sortable ? (
           <button
             aria-label={getSortButtonLabel(label, sortRule)}
@@ -716,14 +717,11 @@ export function VirtualTable<TRow>({
             onClick={(event) => updateSort(column, event.shiftKey)}
             type="button"
           >
-            <span>{column.header}</span>
             <span aria-hidden="true" className="mb-table__sort-indicator">
               {getSortIndicator(activeState.sort, column.id)}
             </span>
           </button>
-        ) : (
-          <span className="mb-table__header-label">{column.header}</span>
-        )}
+        ) : null}
         {showMenuButton ? (
           <button
             aria-controls={isMenuOpen ? menuId : undefined}
@@ -867,7 +865,6 @@ export function VirtualTable<TRow>({
       {columnMenuState && activeMenuColumn ? (
         <ColumnMenu
           activeFilter={activeState.filter}
-          activeSort={activeState.sort}
           closeMenu={closeColumnMenu}
           column={activeMenuColumn}
           id={getColumnMenuId(activeMenuColumn.id)}
@@ -876,7 +873,6 @@ export function VirtualTable<TRow>({
           menuRef={columnMenuRef}
           rows={rows}
           setFilter={setFilter}
-          setSort={setSort}
           x={columnMenuState.x}
           y={columnMenuState.y}
         />
@@ -887,7 +883,6 @@ export function VirtualTable<TRow>({
 
 function ColumnMenu<TRow>({
   activeFilter,
-  activeSort,
   closeMenu,
   column,
   id,
@@ -895,12 +890,10 @@ function ColumnMenu<TRow>({
   menuRef,
   rows,
   setFilter,
-  setSort,
   x,
   y,
 }: {
   activeFilter: TableFilter<TRow> | null;
-  activeSort: TableSortState;
   closeMenu: () => void;
   column: TableColumn<TRow>;
   id: string;
@@ -908,7 +901,6 @@ function ColumnMenu<TRow>({
   menuRef: RefObject<HTMLDivElement | null>;
   rows: readonly TRow[];
   setFilter: (filter: TableFilter<TRow> | null) => void;
-  setSort: (sort: TableSortState) => void;
   x: number;
   y: number;
 }) {
@@ -924,7 +916,6 @@ function ColumnMenu<TRow>({
   );
   const operators = getFilterOperators(columnType, categorical);
   const canApplyFilter = isColumnFilterDraftValid(columnType, draft);
-  const showSort = menuOptions.sort && column.sortable;
   const showFilter = menuOptions.filter && column.filterable !== false;
   const label = getColumnLabel(column);
 
@@ -974,41 +965,6 @@ function ColumnMenu<TRow>({
       role="dialog"
       style={{ left: x, top: y }}
     >
-      {showSort ? (
-        <div className="mb-table__column-menu-section">
-          <button
-            className="mb-table__column-menu-button"
-            onClick={() => {
-              setSort([{ columnId: column.id, direction: "asc" }]);
-              closeMenu();
-            }}
-            type="button"
-          >
-            Sort ascending
-          </button>
-          <button
-            className="mb-table__column-menu-button"
-            onClick={() => {
-              setSort([{ columnId: column.id, direction: "desc" }]);
-              closeMenu();
-            }}
-            type="button"
-          >
-            Sort descending
-          </button>
-          <button
-            className="mb-table__column-menu-button"
-            disabled={activeSort.length === 0}
-            onClick={() => {
-              setSort([]);
-              closeMenu();
-            }}
-            type="button"
-          >
-            Clear sort
-          </button>
-        </div>
-      ) : null}
 
       {showFilter ? (
         <div className="mb-table__column-menu-section">
@@ -1227,16 +1183,15 @@ function resolveColumnMenuOptions(
   columnMenu: boolean | TableColumnMenuOptions,
 ): ResolvedColumnMenuOptions {
   if (columnMenu === true) {
-    return { filter: true, sort: true, trigger: "both" };
+    return { filter: true, trigger: "both" };
   }
 
   if (columnMenu === false) {
-    return { filter: false, sort: false, trigger: "context" };
+    return { filter: false, trigger: "context" };
   }
 
   return {
     filter: columnMenu.filter === true,
-    sort: columnMenu.sort === true,
     trigger: columnMenu.trigger ?? "both",
   };
 }
@@ -1245,7 +1200,7 @@ function hasColumnMenuActions<TRow>(
   column: TableColumn<TRow>,
   menuOptions: ResolvedColumnMenuOptions,
 ) {
-  return (menuOptions.sort && column.sortable) || (menuOptions.filter && column.filterable !== false);
+  return menuOptions.filter && column.filterable !== false;
 }
 
 function isButtonMenuEnabled(menuOptions: ResolvedColumnMenuOptions) {
@@ -1732,15 +1687,37 @@ function getSortRule(sort: TableSortState, columnId: string): TableSortRule | nu
 
 function getSortIndicator(sort: TableSortState, columnId: string) {
   const index = sort.findIndex((rule) => rule.columnId === columnId);
+  const direction = index < 0 ? null : sort[index].direction;
 
-  if (index < 0) {
-    return "-";
-  }
-
-  const rule = sort[index];
-  const indicator = rule.direction === "asc" ? "^" : "v";
-
-  return index === 0 ? indicator : `${index + 1}${indicator}`;
+  return (
+    <>
+      {index > 0 ? <span className="mb-table__sort-priority">{index + 1}</span> : null}
+      <svg
+        className="mb-table__sort-caret"
+        data-sort-direction={direction ?? "none"}
+        fill="none"
+        focusable="false"
+        height="14"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.75"
+        viewBox="0 0 16 16"
+        width="14"
+      >
+        {direction === "asc" ? (
+          <path d="M4 10 8 6l4 4" />
+        ) : direction === "desc" ? (
+          <path d="m4 6 4 4 4-4" />
+        ) : (
+          <>
+            <path d="M4 6.5 8 3l4 3.5" />
+            <path d="m4 9.5 4 3.5 4-3.5" />
+          </>
+        )}
+      </svg>
+    </>
+  );
 }
 
 function getAriaSort(sort: TableSortState, columnId: string) {

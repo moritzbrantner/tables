@@ -158,7 +158,7 @@ describe("VirtualTable", () => {
     expect(screen.getByRole("dialog", { name: /column actions for value/i })).toBeTruthy();
   });
 
-  it("sorts from explicit column menu actions", () => {
+  it("keeps sorting on the header caret instead of the column menu", () => {
     render(
       <VirtualTable
         columnMenu
@@ -170,31 +170,34 @@ describe("VirtualTable", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: /sort value ascending/i }));
-    fireEvent.click(screen.getByRole("button", { name: /sort ascending/i }));
+    fireEvent.click(screen.getByRole("button", { name: /open column actions for value/i }));
+    const dialog = screen.getByRole("dialog", { name: /column actions for value/i });
+
+    expect(within(dialog).queryByRole("button", { name: /sort/i })).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    let sortButton = screen.getByRole("button", { name: /sort value ascending/i });
+    expect(sortButton.querySelector('svg[data-sort-direction="none"]')).toBeTruthy();
+
+    fireEvent.click(sortButton);
     expect(screen.getAllByRole("gridcell").map((cell) => cell.textContent).slice(0, 2)).toEqual([
       "Beta",
       "10",
     ]);
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: /sort value descending/i }));
-    fireEvent.click(screen.getByRole("button", { name: /sort descending/i }));
+    sortButton = screen.getByRole("button", { name: /sort value descending/i });
+    expect(sortButton.querySelector('svg[data-sort-direction="asc"]')).toBeTruthy();
+
+    fireEvent.click(sortButton);
     expect(screen.getAllByRole("gridcell").map((cell) => cell.textContent).slice(0, 2)).toEqual([
       "Gamma",
       "30",
     ]);
-
-    fireEvent.contextMenu(screen.getByRole("button", { name: /clear sort for value/i }));
-    fireEvent.click(
-      within(screen.getByRole("dialog", { name: /column actions for value/i })).getByRole(
-        "button",
-        { name: /^clear sort$/i },
-      ),
-    );
-    expect(screen.getAllByRole("gridcell").map((cell) => cell.textContent).slice(0, 2)).toEqual([
-      "Alpha",
-      "20",
-    ]);
+    expect(
+      screen
+        .getByRole("button", { name: /clear sort for value/i })
+        .querySelector('svg[data-sort-direction="desc"]'),
+    ).toBeTruthy();
   });
 
   it("applies a string filter from the column menu", () => {
@@ -556,7 +559,7 @@ describe("VirtualTable", () => {
   it("hides the menu trigger when button menus are disabled", () => {
     render(
       <VirtualTable
-        columnMenu={{ filter: true, sort: true, trigger: "context" }}
+        columnMenu={{ filter: true, trigger: "context" }}
         columnVirtualization={false}
         columns={columns}
         height={240}

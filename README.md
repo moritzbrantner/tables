@@ -202,11 +202,11 @@ Selection lives in `state.selection.selectedRowKeys`. Column widths live in `sta
 
 ## Column Menus
 
-Pass `columnMenu` to enable header actions for built-in sorting and typed filtering. By default, menus open from a visible header button, right-click, or Shift+F10.
+Pass `columnMenu` to enable typed filtering. Sorting stays on the dedicated caret button for each sortable column. By default, filter menus open from a visible header button, right-click, or Shift+F10.
 
 ```tsx
 <VirtualTable
-  columnMenu={{ filter: true, sort: true, trigger: "both" }}
+  columnMenu={{ filter: true, trigger: "both" }}
   columns={columns}
   rowKey="id"
   rows={rows}
