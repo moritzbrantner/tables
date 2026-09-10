@@ -162,7 +162,11 @@ function encodeFilter(filter: TableViewFilter): EncodedFilter {
     ...(filter.columnFilters
       ? {
           columnFilters: filter.columnFilters.map((columnFilter) => ({
-            ...columnFilter,
+            columnId: columnFilter.columnId,
+            operator: columnFilter.operator,
+            ...(columnFilter.caseSensitive !== undefined
+              ? { caseSensitive: columnFilter.caseSensitive }
+              : {}),
             ...(Object.prototype.hasOwnProperty.call(columnFilter, "value")
               ? { value: encodeValue(columnFilter.value) }
               : {}),
@@ -216,7 +220,7 @@ function decodeColumnFilter(value: unknown): TableColumnFilter | null {
     filter.caseSensitive = value.caseSensitive;
   }
   if (Object.prototype.hasOwnProperty.call(value, "value")) {
-    filter.value = decodeValue(value.value);
+    filter.value = decodeValue(value.value) as TableColumnFilter["value"];
   }
 
   return filter;
