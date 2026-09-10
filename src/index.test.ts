@@ -10,6 +10,8 @@ const expectedRuntimeExports = [
   "applyTableSort",
   "compareTableValues",
   "createDefaultTableState",
+  "createTableColumnDefHelper",
+  "createTableColumnHelper",
   "createTableModel",
   "getColumnValue",
   "getFixedVirtualRange",
