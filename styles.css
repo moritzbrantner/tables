@@ -129,33 +129,48 @@
   appearance: none;
   background: transparent;
   border: 0;
+  border-radius: 4px;
   color: inherit;
   cursor: pointer;
   display: inline-flex;
+  flex: 0 0 auto;
   font: inherit;
-  gap: 6px;
-  min-width: 0;
+  height: 24px;
+  justify-content: center;
   padding: 0;
-  text-align: left;
-  width: 100%;
+  width: 24px;
+}
+
+.mb-table__sort-button:hover,
+.mb-table__sort-button:focus-visible {
+  background: #edf6f5;
+  color: var(--mb-table-text);
+  outline: none;
 }
 
 .mb-table__header-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mb-table__sort-button span:first-child {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .mb-table__sort-indicator {
+  align-items: center;
   color: var(--mb-table-muted);
+  display: inline-flex;
   flex: 0 0 auto;
-  font-size: 11px;
+  gap: 2px;
+}
+
+.mb-table__sort-caret {
+  display: block;
+}
+
+.mb-table__sort-priority {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .mb-table__column-menu-trigger {
