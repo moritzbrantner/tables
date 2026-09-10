@@ -1,1 +1,0 @@
-This follow-up repairs table-options column ordering so the menu mirrors the renderer's sticky-left, center, and sticky-right groups and only allows moves the renderer can represent. The regression test in `src/table-options.sticky.test.tsx` defines the acceptance contract.

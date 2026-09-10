@@ -1002,13 +1002,19 @@ function TableOptionsMenu<TRow>({
   x: number;
   y: number;
 }) {
-  const orderedColumns = resolveColumnOrder(columns, columnOrder);
+  const orderedColumns = resolveRenderedColumnOrder(columns, columnOrder);
   const moveColumn = (columnId: string, offset: -1 | 1) => {
     const ids = orderedColumns.map((column) => column.id);
     const index = ids.indexOf(columnId);
     const nextIndex = index + offset;
+    const column = orderedColumns[index];
+    const nextColumn = orderedColumns[nextIndex];
 
-    if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) {
+    if (
+      !column ||
+      !nextColumn ||
+      getColumnStickyGroup(column) !== getColumnStickyGroup(nextColumn)
+    ) {
       return;
     }
 
@@ -1029,6 +1035,13 @@ function TableOptionsMenu<TRow>({
       <div className="mb-table__table-menu-columns">
         {orderedColumns.map((column, index) => {
           const label = getColumnLabel(column);
+          const stickyGroup = getColumnStickyGroup(column);
+          const previousColumn = orderedColumns[index - 1];
+          const nextColumn = orderedColumns[index + 1];
+          const canMoveUp =
+            previousColumn !== undefined && getColumnStickyGroup(previousColumn) === stickyGroup;
+          const canMoveDown =
+            nextColumn !== undefined && getColumnStickyGroup(nextColumn) === stickyGroup;
 
           return (
             <div className="mb-table__table-menu-column" key={column.id}>
@@ -1049,7 +1062,7 @@ function TableOptionsMenu<TRow>({
                 <button
                   aria-label={`Move ${label} up`}
                   className="mb-table__table-menu-move"
-                  disabled={index === 0}
+                  disabled={!canMoveUp}
                   onClick={() => moveColumn(column.id, -1)}
                   type="button"
                 >
@@ -1060,7 +1073,7 @@ function TableOptionsMenu<TRow>({
                 <button
                   aria-label={`Move ${label} down`}
                   className="mb-table__table-menu-move"
-                  disabled={index === orderedColumns.length - 1}
+                  disabled={!canMoveDown}
                   onClick={() => moveColumn(column.id, 1)}
                   type="button"
                 >
@@ -1753,6 +1766,34 @@ function resolveColumnOrder<TRow>(
   }
 
   return ordered;
+}
+
+function resolveRenderedColumnOrder<TRow>(
+  columns: readonly TableColumn<TRow>[],
+  columnOrder?: TableColumnOrderState,
+): TableColumn<TRow>[] {
+  const orderedColumns = resolveColumnOrder(columns, columnOrder);
+  const left: TableColumn<TRow>[] = [];
+  const center: TableColumn<TRow>[] = [];
+  const right: TableColumn<TRow>[] = [];
+
+  for (const column of orderedColumns) {
+    const stickyGroup = getColumnStickyGroup(column);
+
+    if (stickyGroup === "left") {
+      left.push(column);
+    } else if (stickyGroup === "right") {
+      right.push(column);
+    } else {
+      center.push(column);
+    }
+  }
+
+  return [...left, ...center, ...right];
+}
+
+function getColumnStickyGroup<TRow>(column: TableColumn<TRow>) {
+  return column.sticky === "left" ? "left" : column.sticky === "right" ? "right" : "center";
 }
 
 function isColumnVisible(
