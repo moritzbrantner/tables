@@ -29,7 +29,8 @@ import {
   type TableState,
   type TableStateChange,
 } from "./data";
-import { isColumnVisible, resolveColumnOrder } from "./column-layout";
+import { isColumnVisible, resolveColumnOrder, resolveRenderedColumnOrder } from "./column-layout";
+import { getNextGridPosition, type GridPosition } from "./grid-navigation";
 import { getColumnLabel, type TableColumn } from "./react-column";
 import { TableOptionsMenu } from "./table-options";
 import { useTableStateController } from "./use-table-state";
@@ -213,19 +214,24 @@ export function VirtualTable<TRow>({
   const menuTriggerRef = useRef<HTMLElement | null>(null);
   const ignoreColumnMenuScrollCloseUntilRef = useRef(0);
   const lastSelectedRowKeyRef = useRef<TableRowKey | null>(null);
+  const pendingGridFocusRef = useRef<GridPosition | null>(null);
+  const [activeGridPosition, setActiveGridPosition] = useState<GridPosition>({
+    columnIndex: 0,
+    rowIndex: 0,
+  });
   const viewport = useElementSize(scrollRef);
   const [scrollOffset, setScrollOffset] = useState({ left: 0, top: 0 });
   const [menuState, setMenuState] = useState<MenuState>(null);
   const [resizeState, setResizeState] = useState<ResizeState | null>(null);
   const {
-  activeState,
-  setColumnOrder,
-  setColumnSizing,
-  setColumnVisibility,
-  setFilter,
-  setSelection,
-  setSort,
-} = useTableStateController({ initialState, onStateChange, state });
+    activeState,
+    setColumnOrder,
+    setColumnSizing,
+    setColumnVisibility,
+    setFilter,
+    setSelection,
+    setSort,
+  } = useTableStateController({ initialState, onStateChange, state });
   const orderedColumns = useMemo(
     () => resolveColumnOrder(columns, activeState.columnOrder),
     [activeState.columnOrder, columns],
@@ -238,6 +244,22 @@ export function VirtualTable<TRow>({
     [activeState.columnVisibility, orderedColumns],
   );
   const rowIndexWidth = showRowIndex ? defaultRowIndexWidth : 0;
+  const navigationColumns = useMemo(
+    () => resolveRenderedColumnOrder(visibleColumns),
+    [visibleColumns],
+  );
+  const navigationColumnOffset = showRowIndex ? 1 : 0;
+  const navigationColumnCount = navigationColumns.length + navigationColumnOffset;
+  const navigationColumnIndexById = useMemo(
+    () =>
+      new Map(
+        navigationColumns.map((column, index) => [
+          column.id,
+          index + navigationColumnOffset,
+        ]),
+      ),
+    [navigationColumnOffset, navigationColumns],
+  );
   const columnMenuOptions = useMemo(() => resolveColumnMenuOptions(columnMenu), [columnMenu]);
   const activeMenuColumn = menuState?.kind === "column"
     ? columns.find((column) => column.id === menuState.columnId) ?? null
@@ -357,10 +379,76 @@ export function VirtualTable<TRow>({
     columnEntries.right.map((entry) => entry.width),
   );
   const visibleRows = model.rows.slice(rowRange.startIndex, rowRange.endIndex);
+  const gridPageSize = Math.max(
+    1,
+    Math.floor(Math.max(1, viewport.height - rowHeight) / rowHeight),
+  );
+  const renderedNavigationColumnIndices = useMemo(() => {
+    const indices: number[] = showRowIndex ? [0] : [];
+
+    for (const entry of [
+      ...columnEntries.left,
+      ...visibleCenterEntries,
+      ...columnEntries.right,
+    ]) {
+      const columnIndex = navigationColumnIndexById.get(entry.column.id);
+      if (columnIndex !== undefined) {
+        indices.push(columnIndex);
+      }
+    }
+
+    return indices;
+  }, [
+    columnEntries.left,
+    columnEntries.right,
+    navigationColumnIndexById,
+    showRowIndex,
+    visibleCenterEntries,
+  ]);
+  const activeGridCellIsRendered =
+    activeGridPosition.rowIndex >= rowRange.startIndex &&
+    activeGridPosition.rowIndex < rowRange.endIndex &&
+    renderedNavigationColumnIndices.includes(activeGridPosition.columnIndex);
+  const rovingGridPosition = activeGridCellIsRendered
+    ? activeGridPosition
+    : {
+        columnIndex: renderedNavigationColumnIndices[0] ?? 0,
+        rowIndex: rowRange.startIndex,
+      };
 
   useLayoutEffect(() => {
     onModelChange?.(model);
   }, [model, onModelChange]);
+
+  useEffect(() => {
+    setActiveGridPosition((current) => {
+      const rowIndex = model.rows.length > 0
+        ? Math.min(current.rowIndex, model.rows.length - 1)
+        : 0;
+      const columnIndex = navigationColumnCount > 0
+        ? Math.min(current.columnIndex, navigationColumnCount - 1)
+        : 0;
+
+      return rowIndex === current.rowIndex && columnIndex === current.columnIndex
+        ? current
+        : { columnIndex, rowIndex };
+    });
+  }, [model.rows.length, navigationColumnCount]);
+
+  useLayoutEffect(() => {
+    const pending = pendingGridFocusRef.current;
+    if (!pending) {
+      return;
+    }
+
+    const cell = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-grid-row-index="${pending.rowIndex}"][data-grid-column-index="${pending.columnIndex}"]`,
+    );
+    if (cell) {
+      pendingGridFocusRef.current = null;
+      cell.focus({ preventScroll: true });
+    }
+  }, [activeGridPosition, columnRange, rowRange]);
 
   useEffect(() => {
     if (!resizeState) {
@@ -485,6 +573,79 @@ export function VirtualTable<TRow>({
     }
   }, []);
 
+  const focusGridPosition = useCallback(
+    (position: GridPosition) => {
+      if (
+        position.rowIndex < 0 ||
+        position.rowIndex >= model.rows.length ||
+        position.columnIndex < 0 ||
+        position.columnIndex >= navigationColumnCount
+      ) {
+        return;
+      }
+
+      let nextTop = scrollOffset.top;
+      if (position.rowIndex < rowRange.startIndex) {
+        nextTop = position.rowIndex * rowHeight;
+      } else if (position.rowIndex >= rowRange.endIndex) {
+        const bodyViewportHeight = Math.max(rowHeight, viewport.height - rowHeight);
+        nextTop = Math.max(0, (position.rowIndex + 1) * rowHeight - bodyViewportHeight);
+      }
+
+      let nextLeft = scrollOffset.left;
+      const navigationIndex = position.columnIndex - navigationColumnOffset;
+      const targetColumn = navigationColumns[navigationIndex];
+      if (targetColumn && targetColumn.sticky === undefined) {
+        const centerIndex = columnEntries.center.findIndex(
+          (entry) => entry.column.id === targetColumn.id,
+        );
+        if (centerIndex >= 0) {
+          const targetStart =
+            stickyLeftWidth +
+            centerWidths.slice(0, centerIndex).reduce((sum, width) => sum + width, 0);
+          const targetEnd = targetStart + (centerWidths[centerIndex] ?? 0);
+          const visibleStart = nextLeft + stickyLeftWidth;
+          const visibleEnd = nextLeft + Math.max(1, viewport.width - stickyRightWidth);
+
+          if (targetStart < visibleStart) {
+            nextLeft = Math.max(0, targetStart - stickyLeftWidth);
+          } else if (targetEnd > visibleEnd) {
+            nextLeft = Math.max(
+              0,
+              targetEnd - Math.max(1, viewport.width - stickyRightWidth),
+            );
+          }
+        }
+      }
+
+      pendingGridFocusRef.current = position;
+      const element = scrollRef.current;
+      if (element) {
+        element.scrollLeft = nextLeft;
+        element.scrollTop = nextTop;
+      }
+      setScrollOffset({ left: nextLeft, top: nextTop });
+      setActiveGridPosition(position);
+    },
+    [
+      centerWidths,
+      columnEntries.center,
+      model.rows.length,
+      navigationColumnCount,
+      navigationColumnOffset,
+      navigationColumns,
+      rowHeight,
+      rowRange.endIndex,
+      rowRange.startIndex,
+      scrollOffset.left,
+      scrollOffset.top,
+      stickyLeftWidth,
+      stickyRightWidth,
+      viewport.height,
+      viewport.width,
+    ],
+  );
+
   const updateSort = useCallback(
     (column: TableColumn<TRow>, multi: boolean) => {
       if (!column.sortable) {
@@ -598,6 +759,29 @@ export function VirtualTable<TRow>({
     [],
   );
 
+  const handleResizeKeyDown = useCallback(
+    (
+      event: KeyboardEvent<HTMLButtonElement>,
+      column: TableColumn<TRow>,
+      width: number,
+    ) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+      const step = event.shiftKey ? 32 : 8;
+      const nextWidth = clampColumnWidth(column, width + direction * step);
+      setColumnSizing({
+        ...activeState.columnSizing,
+        [column.id]: nextWidth,
+      });
+    },
+    [activeState.columnSizing, setColumnSizing],
+  );
+
   const resetColumnWidth = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>, column: TableColumn<TRow>) => {
       event.preventDefault();
@@ -669,8 +853,32 @@ export function VirtualTable<TRow>({
     [onRowClick, updateSelectionForRow],
   );
 
-  const handleRowKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>, row: TRow, rowIndex: number, key: TableRowKey) => {
+  const handleGridCellKeyDown = useCallback(
+    (
+      event: KeyboardEvent<HTMLElement>,
+      row: TRow,
+      rowIndex: number,
+      key: TableRowKey,
+      columnIndex: number,
+    ) => {
+      if (event.target !== event.currentTarget) {
+        return;
+      }
+
+      const nextPosition = getNextGridPosition({
+        columnCount: navigationColumnCount,
+        ctrlKey: event.ctrlKey || event.metaKey,
+        current: { columnIndex, rowIndex },
+        key: event.key,
+        pageSize: gridPageSize,
+        rowCount: model.rows.length,
+      });
+      if (nextPosition) {
+        event.preventDefault();
+        focusGridPosition(nextPosition);
+        return;
+      }
+
       if (event.key !== "Enter" && event.key !== " ") {
         return;
       }
@@ -683,7 +891,15 @@ export function VirtualTable<TRow>({
       });
       onRowClick?.(row, rowIndex);
     },
-    [onRowClick, selectionMode, updateSelectionForRow],
+    [
+      focusGridPosition,
+      gridPageSize,
+      model.rows.length,
+      navigationColumnCount,
+      onRowClick,
+      selectionMode,
+      updateSelectionForRow,
+    ],
   );
 
   const renderHeaderCell = (entry: ColumnEntry<TRow>, sticky: "left" | "right" | null) => {
@@ -749,6 +965,7 @@ export function VirtualTable<TRow>({
             aria-label={`Resize ${label}`}
             className="mb-table__resize-handle"
             onDoubleClick={(event) => resetColumnWidth(event, column)}
+            onKeyDown={(event) => handleResizeKeyDown(event, column, width)}
             onPointerDown={(event) => handleResizePointerDown(event, column, width)}
             type="button"
           />
@@ -761,6 +978,8 @@ export function VirtualTable<TRow>({
     entry: ColumnEntry<TRow>,
     row: TRow,
     rowIndex: number,
+    rowKeyValue: TableRowKey,
+    columnIndex: number,
     sticky: "left" | "right" | null,
   ) => {
     const value = getColumnValue(entry.column, row, rowIndex);
@@ -769,9 +988,21 @@ export function VirtualTable<TRow>({
       <div
         aria-colindex={entry.originalIndex + (showRowIndex ? 2 : 1)}
         className={cellClassName("mb-table__cell", entry.column, { sticky })}
+        data-grid-column-index={columnIndex}
+        data-grid-row-index={rowIndex}
         key={entry.column.id}
+        onFocus={() => setActiveGridPosition({ columnIndex, rowIndex })}
+        onKeyDown={(event) =>
+          handleGridCellKeyDown(event, row, rowIndex, rowKeyValue, columnIndex)
+        }
         role="gridcell"
         style={getStickyStyle(entry)}
+        tabIndex={
+          rovingGridPosition.rowIndex === rowIndex &&
+          rovingGridPosition.columnIndex === columnIndex
+            ? 0
+            : -1
+        }
         title={typeof value === "string" ? value : undefined}
       >
         {entry.column.cell
@@ -795,10 +1026,11 @@ export function VirtualTable<TRow>({
         onScroll={handleScroll}
         role="grid"
         aria-colcount={visibleColumns.length + (showRowIndex ? 1 : 0)}
-        aria-rowcount={model.totalRowCount}
+        aria-rowcount={model.totalRowCount + 1}
       >
         <div className="mb-table__surface" style={{ minWidth: totalColumnWidth }}>
           <div
+            aria-rowindex={1}
             className="mb-table__header"
             role="row"
             style={{ gridTemplateColumns }}
@@ -851,7 +1083,7 @@ export function VirtualTable<TRow>({
 
                 return (
                   <div
-                    aria-rowindex={rowIndex + 1}
+                    aria-rowindex={rowIndex + 2}
                     aria-selected={selectionMode !== "none" ? selected : undefined}
                     className={[
                       "mb-table__row",
@@ -862,30 +1094,61 @@ export function VirtualTable<TRow>({
                       .join(" ")}
                     key={key}
                     onClick={interactive ? (event) => handleRowClick(event, row, rowIndex, key) : undefined}
-                    onKeyDown={
-                      interactive
-                        ? (event) => handleRowKeyDown(event, row, rowIndex, key)
-                        : undefined
-                    }
                     role="row"
                     style={{ gridTemplateColumns }}
-                    tabIndex={interactive ? 0 : undefined}
                   >
                     {showRowIndex ? (
                       <div
                         aria-colindex={1}
                         className="mb-table__cell mb-table__index-cell mb-table__cell--sticky-left"
+                        data-grid-column-index={0}
+                        data-grid-row-index={rowIndex}
+                        onFocus={() => setActiveGridPosition({ columnIndex: 0, rowIndex })}
+                        onKeyDown={(event) => handleGridCellKeyDown(event, row, rowIndex, key, 0)}
                         role="rowheader"
                         style={{ left: 0 }}
+                        tabIndex={
+                          rovingGridPosition.rowIndex === rowIndex &&
+                          rovingGridPosition.columnIndex === 0
+                            ? 0
+                            : -1
+                        }
                       >
                         {rowIndex + 1}
                       </div>
                     ) : null}
-                    {columnEntries.left.map((entry) => renderRowCell(entry, row, rowIndex, "left"))}
+                    {columnEntries.left.map((entry) =>
+                      renderRowCell(
+                        entry,
+                        row,
+                        rowIndex,
+                        key,
+                        navigationColumnIndexById.get(entry.column.id) ?? 0,
+                        "left",
+                      ),
+                    )}
                     {renderSpacer("before", columnRange.offsetBefore)}
-                    {visibleCenterEntries.map((entry) => renderRowCell(entry, row, rowIndex, null))}
+                    {visibleCenterEntries.map((entry) =>
+                      renderRowCell(
+                        entry,
+                        row,
+                        rowIndex,
+                        key,
+                        navigationColumnIndexById.get(entry.column.id) ?? 0,
+                        null,
+                      ),
+                    )}
                     {renderSpacer("after", columnRange.offsetAfter)}
-                    {columnEntries.right.map((entry) => renderRowCell(entry, row, rowIndex, "right"))}
+                    {columnEntries.right.map((entry) =>
+                      renderRowCell(
+                        entry,
+                        row,
+                        rowIndex,
+                        key,
+                        navigationColumnIndexById.get(entry.column.id) ?? 0,
+                        "right",
+                      ),
+                    )}
                   </div>
                 );
               })}
