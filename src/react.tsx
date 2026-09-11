@@ -71,6 +71,8 @@ export type VirtualTableProps<TRow> = {
   onStateChange?: (change: TableStateChange<TRow>) => void;
   overscan?: number;
   rowHeight?: number;
+  /** Zero-based position of the first supplied row within a manual/server result. */
+  rowIndexOffset?: number;
   rowKey: RowKey<TRow>;
   rows: readonly TRow[];
   selectionMode?: TableSelectionMode;
@@ -200,6 +202,7 @@ export function VirtualTable<TRow>({
   onStateChange,
   overscan = 8,
   rowHeight = defaultRowHeight,
+  rowIndexOffset = 0,
   rowKey,
   rows,
   selectionMode = "none",
@@ -291,6 +294,10 @@ export function VirtualTable<TRow>({
       totalRowCount,
     ],
   );
+  const resolvedRowIndexOffset =
+    mode === "manual" && Number.isFinite(rowIndexOffset)
+      ? Math.max(0, Math.trunc(rowIndexOffset))
+      : 0;
   const selectedRowKeys = activeState.selection.selectedRowKeys;
   const selectedRowKeySet = useMemo(() => new Set(selectedRowKeys), [selectedRowKeys]);
   const columnWidths = useMemo(
@@ -1083,7 +1090,7 @@ export function VirtualTable<TRow>({
 
                 return (
                   <div
-                    aria-rowindex={rowIndex + 2}
+                    aria-rowindex={resolvedRowIndexOffset + rowIndex + 2}
                     aria-selected={selectionMode !== "none" ? selected : undefined}
                     className={[
                       "mb-table__row",
@@ -1114,7 +1121,7 @@ export function VirtualTable<TRow>({
                             : -1
                         }
                       >
-                        {rowIndex + 1}
+                        {resolvedRowIndexOffset + rowIndex + 1}
                       </div>
                     ) : null}
                     {columnEntries.left.map((entry) =>

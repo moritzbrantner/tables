@@ -4,6 +4,7 @@ import * as publicApi from "./index";
 
 const expectedRuntimeExports = [
   "DataTable",
+  "TABLE_SERVER_REQUEST_VERSION",
   "TABLE_VIEW_STATE_VERSION",
   "Table",
   "VirtualTable",
@@ -15,7 +16,10 @@ const expectedRuntimeExports = [
   "createTableColumnDefHelper",
   "createTableColumnHelper",
   "createTableModel",
+  "createTableServerQueryKey",
+  "createTableServerRequest",
   "decodeTableViewState",
+  "encodeTableServerRequest",
   "encodeTableViewState",
   "getColumnValue",
   "getFixedVirtualRange",
@@ -24,6 +28,7 @@ const expectedRuntimeExports = [
   "getVariableVirtualRange",
   "hasControlledStateKey",
   "mergeControlledTableState",
+  "normalizeTableServerWindow",
   "tableStateToViewState",
   "updateTableState",
   "viewStateToTableState",

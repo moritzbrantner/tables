@@ -45,6 +45,16 @@ export {
   type VirtualTableProps,
 } from "./react-rust";
 export {
+  TABLE_SERVER_REQUEST_VERSION,
+  createTableServerQueryKey,
+  createTableServerRequest,
+  encodeTableServerRequest,
+  normalizeTableServerWindow,
+  type TableServerRequest,
+  type TableServerWindow,
+  type TableServerWindowResult,
+} from "./server";
+export {
   Table,
   createTableColumnDefHelper,
   type TableAlign,
