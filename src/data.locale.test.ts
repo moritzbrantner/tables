@@ -53,22 +53,25 @@ describe("locale-aware table text semantics", () => {
   });
 
   it("reuses a single collator within each locale-aware table operation", () => {
-    const collator = vi.spyOn(Intl, "Collator");
+    const OriginalCollator = Intl.Collator;
+    const collatorConstructor = vi
+      .spyOn(Intl, "Collator")
+      .mockImplementation((locales, options) => new OriginalCollator(locales, options));
     const rows: Row[] = Array.from({ length: 32 }, (_, index) => ({
       id: index,
       name: `Row ${32 - index}`,
     }));
 
     applyTableSort(rows, columns, [{ columnId: "name", direction: "asc" }], "en");
-    expect(collator).toHaveBeenCalledTimes(1);
+    expect(collatorConstructor).toHaveBeenCalledTimes(1);
 
-    collator.mockClear();
+    collatorConstructor.mockClear();
     applyTableFilter(
       rows,
       columns,
       { columnFilters: [{ columnId: "name", operator: "equals", value: "row 1" }] },
       "en",
     );
-    expect(collator).toHaveBeenCalledTimes(1);
+    expect(collatorConstructor).toHaveBeenCalledTimes(1);
   });
 });
