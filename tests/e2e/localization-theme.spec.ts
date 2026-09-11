@@ -3,14 +3,14 @@ import { expect, test } from "@playwright/test";
 test("localizes table-owned copy and preserves narrow themed tables", async ({ page }) => {
   await page.goto("/localization.html");
 
-  await expect(page.getByRole("region", { name: "Data table" })).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Data table" })).toBeVisible();
 
   await page.getByLabel("Language").selectOption("de");
-  await expect(page.getByRole("region", { name: "Datentabelle" })).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Datentabelle" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Tabellenoptionen öffnen" })).toBeVisible();
 
   await page.getByLabel("Language").selectOption("es");
-  await expect(page.getByRole("region", { name: "Tabla de datos" })).toBeVisible();
+  await expect(page.getByRole("grid", { name: "Tabla de datos" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Abrir opciones de tabla" })).toBeVisible();
 
   await page.getByLabel("Theme").selectOption("dark");
