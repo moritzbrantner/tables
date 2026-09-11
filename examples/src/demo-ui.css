@@ -11,6 +11,19 @@
   --demo-focus-ring: rgb(36 88 211 / 24%);
 }
 
+:root[data-demo-theme="dark"] {
+  color-scheme: dark;
+  --demo-bg: #111827;
+  --demo-fg: #f3f4f6;
+  --demo-muted: #a6adbb;
+  --demo-border: #374151;
+  --demo-surface: #1f2937;
+  --demo-accent: #8fb0ff;
+  --demo-accent-foreground: #111827;
+  --demo-shadow: 0 12px 32px rgb(0 0 0 / 28%);
+  --demo-focus-ring: rgb(143 176 255 / 30%);
+}
+
 .demo-button,
 .demo-select,
 .demo-search-field,
