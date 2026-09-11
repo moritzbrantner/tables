@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 
+// One-shot cleanup after extracting the column-menu module.
 const path = "src/react.tsx";
 let source = await readFile(path, "utf8");
 const before = "  type TableColumnMenuTrigger,\n";
