@@ -15,6 +15,7 @@ export default defineConfig({
       input: {
         dense: path.resolve(examplesDir, "dense.html"),
         index: path.resolve(examplesDir, "index.html"),
+        localization: path.resolve(examplesDir, "localization.html"),
         server: path.resolve(examplesDir, "server.html"),
         states: path.resolve(examplesDir, "states.html"),
         wide: path.resolve(examplesDir, "wide.html"),
