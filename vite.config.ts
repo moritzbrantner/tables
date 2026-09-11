@@ -15,6 +15,7 @@ export default defineConfig({
       input: {
         dense: path.resolve(examplesDir, "dense.html"),
         index: path.resolve(examplesDir, "index.html"),
+        server: path.resolve(examplesDir, "server.html"),
         states: path.resolve(examplesDir, "states.html"),
         wide: path.resolve(examplesDir, "wide.html"),
       },
@@ -35,6 +36,10 @@ export default defineConfig({
       {
         find: /^@moritzbrantner\/tables\/data$/,
         replacement: path.resolve(rootDir, "src/data.ts"),
+      },
+      {
+        find: /^@moritzbrantner\/tables\/server$/,
+        replacement: path.resolve(rootDir, "src/server.ts"),
       },
       {
         find: /^@moritzbrantner\/tables\/view-state$/,
