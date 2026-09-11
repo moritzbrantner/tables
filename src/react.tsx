@@ -1009,13 +1009,13 @@ export function VirtualTable<TRow>({
 
   return (
     <section
-      aria-label={resolvedAriaLabel}
       className={["mb-table", striped ? "mb-table--striped" : "", className ?? ""]
         .filter(Boolean)
         .join(" ")}
       style={{ "--mb-table-row-height": `${rowHeight}px`, height } as CSSProperties}
     >
       <div
+        aria-label={resolvedAriaLabel}
         ref={scrollRef}
         className="mb-table__scroll"
         onScroll={handleScroll}

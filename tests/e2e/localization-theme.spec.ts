@@ -31,6 +31,7 @@ test("localizes table-owned copy and preserves narrow themed tables", async ({ p
 
   await page.getByRole("button", { name: "Use narrow width" }).click();
   const preview = page.getByTestId("localization-preview");
+  await expect(preview).toHaveClass(/localization-preview--narrow/);
   const box = await preview.boundingBox();
   expect(box?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(421);
 

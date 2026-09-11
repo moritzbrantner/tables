@@ -39,7 +39,7 @@ describe("VirtualTable messages", () => {
       />,
     );
 
-    expect(screen.getByRole("region", { name: "Datentabelle" })).toBeTruthy();
+    expect(screen.getByRole("grid", { name: "Datentabelle" })).toBeTruthy();
     expect(screen.getByText("Keine Zeilen")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Tabellenoptionen öffnen" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Spaltenaktionen für Name öffnen" })).toBeTruthy();

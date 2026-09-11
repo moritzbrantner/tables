@@ -222,7 +222,9 @@ select {
 }
 
 .localization-preview--narrow {
+  justify-self: start;
   max-width: 420px;
+  width: min(420px, 100%);
 }
 
 @media (max-width: 980px) {
