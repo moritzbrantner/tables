@@ -35,6 +35,7 @@ function ServerWorkflowExample() {
 
     return {
       filteredRowCount: filteredRows.length,
+      rowIndexOffset: offset,
       rows: sortedRows.slice(offset, offset + pageSize),
       sortedRowCount: sortedRows.length,
       totalRowCount: sourceRows.length,
@@ -109,11 +110,13 @@ function ServerWorkflowExample() {
             }
             setState(nextState);
           }}
+          rowIndexOffset={serverResult.rowIndexOffset}
           rowKey="id"
           rows={serverResult.rows}
+          showRowIndex
           sortedRowCount={serverResult.sortedRowCount}
           state={state}
-          totalRowCount={serverResult.sortedRowCount}
+          totalRowCount={serverResult.totalRowCount}
         />
 
         <div className="table-toolbar">
