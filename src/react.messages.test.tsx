@@ -46,4 +46,18 @@ describe("VirtualTable messages", () => {
     expect(screen.getByRole("button", { name: "Name Größe ändern" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Name aufsteigend sortieren" })).toBeTruthy();
   });
+
+  it("preserves explicitly null state renderers", () => {
+    const { rerender } = render(
+      <VirtualTable columns={columns} emptyState={null} rowKey="id" rows={[]} />,
+    );
+
+    expect(screen.queryByText("No rows")).toBeNull();
+
+    rerender(
+      <VirtualTable columns={columns} loading loadingState={null} rowKey="id" rows={[]} />,
+    );
+
+    expect(screen.queryByText("Loading rows")).toBeNull();
+  });
 });

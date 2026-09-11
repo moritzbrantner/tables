@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyTableFilter,
@@ -14,6 +14,10 @@ const columns: TableDataColumn<Row>[] = [
   { accessor: "id", id: "id", type: "number" },
   { accessor: "name", id: "name", type: "string" },
 ];
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("locale-aware table text semantics", () => {
   it("uses locale-aware case folding for global search", () => {
@@ -46,5 +50,25 @@ describe("locale-aware table text semantics", () => {
 
     const model = createTableModel({ columns, filter: { query: "izmir" }, locale: "tr", rows });
     expect(model.rows).toEqual([rows[0]]);
+  });
+
+  it("constructs one collator per locale-aware table operation", () => {
+    const collator = vi.spyOn(Intl, "Collator");
+    const rows: Row[] = Array.from({ length: 32 }, (_, index) => ({
+      id: index,
+      name: `Row ${32 - index}`,
+    }));
+
+    applyTableSort(rows, columns, [{ columnId: "name", direction: "asc" }], "en");
+    expect(collator).toHaveBeenCalledTimes(1);
+
+    collator.mockClear();
+    applyTableFilter(
+      rows,
+      columns,
+      { columnFilters: [{ columnId: "name", operator: "equals", value: "row 1" }] },
+      "en",
+    );
+    expect(collator).toHaveBeenCalledTimes(1);
   });
 });

@@ -196,8 +196,8 @@ export function VirtualTable<TRow>({
 }: VirtualTableProps<TRow>) {
   const messages = useMemo(() => resolveTableMessages(messageOverrides), [messageOverrides]);
   const resolvedAriaLabel = ariaLabel ?? messages.tableAriaLabel;
-  const resolvedEmptyState = emptyState ?? messages.emptyState;
-  const resolvedLoadingState = loadingState ?? messages.loadingState;
+  const resolvedEmptyState = emptyState === undefined ? messages.emptyState : emptyState;
+  const resolvedLoadingState = loadingState === undefined ? messages.loadingState : loadingState;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTriggerRef = useRef<HTMLElement | null>(null);

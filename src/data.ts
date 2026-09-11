@@ -340,11 +340,14 @@ function applyTableFilterTypeScript<TRow>(
   const query = filter.query?.trim() ?? "";
   const structuredFilters = filter.columnFilters ?? [];
   const searchColumns = getFilterColumns(columns, filter.queryColumnIds);
+  const collator = getTableCollator(locale);
 
   return rows.filter((row, rowIndex) => {
     const structuredMatch = structuredFilters.every((columnFilter) => {
       const column = columns.find((candidate) => candidate.id === columnFilter.columnId);
-      return column ? matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter, locale) : false;
+      return column
+        ? matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter, locale, collator)
+        : false;
     });
 
     if (!structuredMatch) {
@@ -379,6 +382,8 @@ function applyTableSortTypeScript<TRow>(
     return Array.from(rows);
   }
 
+  const collator = getTableCollator(locale);
+
   return rows
     .map((row, rowIndex) => ({ row, rowIndex }))
     .sort((left, right) => {
@@ -389,7 +394,7 @@ function applyTableSortTypeScript<TRow>(
         const rightValue = rule.column.sortAccessor
           ? rule.column.sortAccessor(right.row, right.rowIndex)
           : getColumnValue(rule.column, right.row, right.rowIndex);
-        const comparison = compareForSort(leftValue, rightValue, rule.direction, locale);
+        const comparison = compareForSort(leftValue, rightValue, rule.direction, collator);
         if (comparison !== 0) {
           return comparison;
         }
@@ -403,7 +408,8 @@ function applyTableSortTypeScript<TRow>(
 function matchesColumnFilter(
   value: unknown,
   filter: TableColumnFilter,
-  locale?: string | readonly string[],
+  locale: string | readonly string[] | undefined,
+  collator: Intl.Collator,
 ): boolean {
   const operator = filter.operator;
   if (operator === "isNull") {
@@ -413,14 +419,14 @@ function matchesColumnFilter(
     return value != null;
   }
   if (operator === "equals") {
-    return filterValuesEqual(value, filter.value, filter.caseSensitive === true, locale);
+    return filterValuesEqual(value, filter.value, filter.caseSensitive === true, collator);
   }
   if (operator === "notEquals") {
-    return !filterValuesEqual(value, filter.value, filter.caseSensitive === true, locale);
+    return !filterValuesEqual(value, filter.value, filter.caseSensitive === true, collator);
   }
   if (operator === "in") {
     return Array.isArray(filter.value) && filter.value.some((candidate) =>
-      filterValuesEqual(value, candidate, filter.caseSensitive === true, locale),
+      filterValuesEqual(value, candidate, filter.caseSensitive === true, collator),
     );
   }
 
@@ -501,7 +507,7 @@ function filterValuesEqual(
   left: unknown,
   right: unknown,
   caseSensitive: boolean,
-  locale?: string | readonly string[],
+  collator: Intl.Collator,
 ): boolean {
   if (left == null || right == null || Array.isArray(right)) {
     return left === right;
@@ -511,7 +517,7 @@ function filterValuesEqual(
     if (caseSensitive) {
       return stringifyCellValue(left) === stringifyCellValue(right);
     }
-    return getTableCollator(locale).compare(stringifyCellValue(left), stringifyCellValue(right)) === 0;
+    return collator.compare(stringifyCellValue(left), stringifyCellValue(right)) === 0;
   }
 
   return stringifyCellValue(left) === stringifyCellValue(right);
@@ -521,7 +527,7 @@ function compareForSort(
   left: unknown,
   right: unknown,
   direction: TableSortDirection,
-  locale?: string | readonly string[],
+  collator: Intl.Collator,
 ): number {
   const leftNull = left == null || (typeof left === "number" && !Number.isFinite(left));
   const rightNull = right == null || (typeof right === "number" && !Number.isFinite(right));
@@ -545,7 +551,7 @@ function compareForSort(
   } else {
     const leftString = stringifyCellValue(leftValue);
     const rightString = stringifyCellValue(rightValue);
-    comparison = getTableCollator(locale).compare(leftString, rightString);
+    comparison = collator.compare(leftString, rightString);
   }
 
   return direction === "asc" ? comparison : -comparison;
