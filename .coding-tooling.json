@@ -12,5 +12,9 @@
       "lint": ["bunx", "oxlint@1.80.0", "--format=github"],
       "package:check": ["bun", "run", "pack:check"]
     }
+  },
+  "merge": {
+    "authority": "hosted",
+    "requiredChecks": ["verify"]
   }
 }
