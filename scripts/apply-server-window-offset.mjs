@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 
+// One-shot exact patch for the reviewed server-window accessibility gap.
 const path = "src/react.tsx";
 let source = await readFile(path, "utf8");
 
