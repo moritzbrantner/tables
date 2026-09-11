@@ -25,7 +25,6 @@ import {
   resolveColumnMenuOptions,
   shouldIgnoreColumnMenuScrollClose,
   type TableColumnMenuOptions,
-  type TableColumnMenuTrigger,
 } from "./column-menu";
 import { isColumnVisible, resolveColumnOrder, resolveRenderedColumnOrder } from "./column-layout";
 import {
