@@ -1,0 +1,215 @@
+name: Apply review fixes
+
+on:
+  push:
+    branches:
+      - feat/table-interaction-convergence
+    paths:
+      - .github/workflows/apply-review-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout review branch
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Apply narrow review fixes and regressions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match in {path}, found {count}: {old!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "src/react.tsx",
+              "  const resolvedEmptyState = emptyState ?? messages.emptyState;\n"
+              "  const resolvedLoadingState = loadingState ?? messages.loadingState;",
+              "  const resolvedEmptyState = emptyState === undefined ? messages.emptyState : emptyState;\n"
+              "  const resolvedLoadingState = loadingState === undefined ? messages.loadingState : loadingState;",
+          )
+
+          replace_once(
+              "src/data.ts",
+              "  const structuredFilters = filter.columnFilters ?? [];\n"
+              "  const searchColumns = getFilterColumns(columns, filter.queryColumnIds);",
+              "  const structuredFilters = filter.columnFilters ?? [];\n"
+              "  const searchColumns = getFilterColumns(columns, filter.queryColumnIds);\n"
+              "  const collator = getTableCollator(locale);",
+          )
+          replace_once(
+              "src/data.ts",
+              "      return column ? matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter, locale) : false;",
+              "      return column\n"
+              "        ? matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter, locale, collator)\n"
+              "        : false;",
+          )
+          replace_once(
+              "src/data.ts",
+              "  if (rules.length === 0) {\n"
+              "    return Array.from(rows);\n"
+              "  }\n\n"
+              "  return rows",
+              "  if (rules.length === 0) {\n"
+              "    return Array.from(rows);\n"
+              "  }\n\n"
+              "  const collator = getTableCollator(locale);\n\n"
+              "  return rows",
+          )
+          replace_once(
+              "src/data.ts",
+              "        const comparison = compareForSort(leftValue, rightValue, rule.direction, locale);",
+              "        const comparison = compareForSort(leftValue, rightValue, rule.direction, collator);",
+          )
+          replace_once(
+              "src/data.ts",
+              "function matchesColumnFilter(\n"
+              "  value: unknown,\n"
+              "  filter: TableColumnFilter,\n"
+              "  locale?: string | readonly string[],\n"
+              "): boolean {",
+              "function matchesColumnFilter(\n"
+              "  value: unknown,\n"
+              "  filter: TableColumnFilter,\n"
+              "  locale: string | readonly string[] | undefined,\n"
+              "  collator: Intl.Collator,\n"
+              "): boolean {",
+          )
+          replace_once(
+              "src/data.ts",
+              "    return filterValuesEqual(value, filter.value, filter.caseSensitive === true, locale);",
+              "    return filterValuesEqual(value, filter.value, filter.caseSensitive === true, collator);",
+          )
+          replace_once(
+              "src/data.ts",
+              "    return !filterValuesEqual(value, filter.value, filter.caseSensitive === true, locale);",
+              "    return !filterValuesEqual(value, filter.value, filter.caseSensitive === true, collator);",
+          )
+          replace_once(
+              "src/data.ts",
+              "      filterValuesEqual(value, candidate, filter.caseSensitive === true, locale),",
+              "      filterValuesEqual(value, candidate, filter.caseSensitive === true, collator),",
+          )
+          replace_once(
+              "src/data.ts",
+              "function filterValuesEqual(\n"
+              "  left: unknown,\n"
+              "  right: unknown,\n"
+              "  caseSensitive: boolean,\n"
+              "  locale?: string | readonly string[],\n"
+              "): boolean {",
+              "function filterValuesEqual(\n"
+              "  left: unknown,\n"
+              "  right: unknown,\n"
+              "  caseSensitive: boolean,\n"
+              "  collator: Intl.Collator,\n"
+              "): boolean {",
+          )
+          replace_once(
+              "src/data.ts",
+              "    return getTableCollator(locale).compare(stringifyCellValue(left), stringifyCellValue(right)) === 0;",
+              "    return collator.compare(stringifyCellValue(left), stringifyCellValue(right)) === 0;",
+          )
+          replace_once(
+              "src/data.ts",
+              "function compareForSort(\n"
+              "  left: unknown,\n"
+              "  right: unknown,\n"
+              "  direction: TableSortDirection,\n"
+              "  locale?: string | readonly string[],\n"
+              "): number {",
+              "function compareForSort(\n"
+              "  left: unknown,\n"
+              "  right: unknown,\n"
+              "  direction: TableSortDirection,\n"
+              "  collator: Intl.Collator,\n"
+              "): number {",
+          )
+          replace_once(
+              "src/data.ts",
+              "    comparison = getTableCollator(locale).compare(leftString, rightString);",
+              "    comparison = collator.compare(leftString, rightString);",
+          )
+
+          locale_test = Path("src/data.locale.test.ts")
+          locale_text = locale_test.read_text()
+          locale_text = locale_text.replace(
+              'import { describe, expect, it } from "vitest";',
+              'import { afterEach, describe, expect, it, vi } from "vitest";',
+              1,
+          )
+          describe_marker = 'describe("locale-aware table text semantics", () => {'
+          if locale_text.count(describe_marker) != 1:
+              raise SystemExit("locale test describe marker changed")
+          locale_text = locale_text.replace(
+              describe_marker,
+              'afterEach(() => {\n  vi.restoreAllMocks();\n});\n\n' + describe_marker,
+              1,
+          )
+          locale_regression = '''\n\n  it("constructs one collator per locale-aware table operation", () => {
+    const collator = vi.spyOn(Intl, "Collator");
+    const rows: Row[] = Array.from({ length: 32 }, (_, index) => ({
+      id: index,
+      name: `Row ${32 - index}`,
+    }));
+
+    applyTableSort(rows, columns, [{ columnId: "name", direction: "asc" }], "en");
+    expect(collator).toHaveBeenCalledTimes(1);
+
+    collator.mockClear();
+    applyTableFilter(
+      rows,
+      columns,
+      { columnFilters: [{ columnId: "name", operator: "equals", value: "row 1" }] },
+      "en",
+    );
+    expect(collator).toHaveBeenCalledTimes(1);
+  });'''
+          closing = "\n});\n"
+          index = locale_text.rfind(closing)
+          if index < 0:
+              raise SystemExit("locale test closing marker changed")
+          locale_test.write_text(locale_text[:index] + locale_regression + locale_text[index:])
+
+          messages_test = Path("src/react.messages.test.tsx")
+          messages_text = messages_test.read_text()
+          state_regression = '''\n\n  it("preserves explicitly null state renderers", () => {
+    const { rerender } = render(
+      <VirtualTable columns={columns} emptyState={null} rowKey="id" rows={[]} />,
+    );
+
+    expect(screen.queryByText("No rows")).toBeNull();
+
+    rerender(
+      <VirtualTable columns={columns} loading loadingState={null} rowKey="id" rows={[]} />,
+    );
+
+    expect(screen.queryByText("Loading rows")).toBeNull();
+  });'''
+          index = messages_text.rfind(closing)
+          if index < 0:
+              raise SystemExit("messages test closing marker changed")
+          messages_test.write_text(messages_text[:index] + state_regression + messages_text[index:])
+          PY
+
+          git diff --check
+
+      - name: Commit review fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/data.ts src/react.tsx src/data.locale.test.ts src/react.messages.test.tsx
+          git commit -m "fix: address table review findings"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
