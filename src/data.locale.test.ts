@@ -52,7 +52,7 @@ describe("locale-aware table text semantics", () => {
     expect(model.rows).toEqual([rows[0]]);
   });
 
-  it("constructs one collator per locale-aware table operation", () => {
+  it("reuses a single collator within each locale-aware table operation", () => {
     const collator = vi.spyOn(Intl, "Collator");
     const rows: Row[] = Array.from({ length: 32 }, (_, index) => ({
       id: index,
