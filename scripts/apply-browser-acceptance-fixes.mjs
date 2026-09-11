@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 
+// One-shot repair for browser acceptance findings; removed after the bot commit lands.
 async function patch(path, replacements) {
   let source = await readFile(path, "utf8");
   for (const [before, after, label] of replacements) {
