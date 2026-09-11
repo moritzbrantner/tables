@@ -19,6 +19,7 @@ const expectedRuntimeExports = [
   "createTableServerQueryKey",
   "createTableServerRequest",
   "decodeTableViewState",
+  "defaultTableMessages",
   "encodeTableServerRequest",
   "encodeTableViewState",
   "getColumnValue",
