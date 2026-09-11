@@ -50,7 +50,7 @@ import { TableOptionsMenu } from "./table-options";
 import { useTableStateController } from "./use-table-state";
 import { createVariableVirtualLayout, getFixedVirtualRange } from "./virtualization";
 
-export type RowKey<TRow>export type RowKey<TRow> = keyof TRow | ((row: TRow, rowIndex: number) => TableRowKey);
+export type RowKey<TRow> = keyof TRow | ((row: TRow, rowIndex: number) => TableRowKey);
 
 export type TableProcessingMode = "client" | "manual";
 
