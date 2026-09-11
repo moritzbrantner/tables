@@ -8,8 +8,8 @@ import { VirtualTable, type TableColumn } from "./react";
 type Row = { id: number; name: string };
 
 const columns: TableColumn<Row>[] = [
-  { accessor: "id", id: "id" },
-  { accessor: "name", id: "name" },
+  { accessor: "id", header: "ID", id: "id" },
+  { accessor: "name", header: "Name", id: "name" },
 ];
 
 describe("VirtualTable manual server windows", () => {
