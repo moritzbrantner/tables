@@ -56,7 +56,9 @@ describe("locale-aware table text semantics", () => {
     const OriginalCollator = Intl.Collator;
     const collatorConstructor = vi
       .spyOn(Intl, "Collator")
-      .mockImplementation((locales, options) => new OriginalCollator(locales, options));
+      .mockImplementation(function Collator(locales, options) {
+        return new OriginalCollator(locales, options);
+      });
     const rows: Row[] = Array.from({ length: 32 }, (_, index) => ({
       id: index,
       name: `Row ${32 - index}`,
