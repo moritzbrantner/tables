@@ -100,7 +100,7 @@ export type VirtualTableProps<TRow> = {
   totalRowCount?: number;
 };
 
-export type DataTableProps<TRow>export type DataTableProps<TRow> = Omit<
+export type DataTableProps<TRow> = Omit<
   VirtualTableProps<TRow>,
   "columnVirtualization" | "overscan" | "rowHeight"
 > & {
@@ -126,7 +126,7 @@ type MenuState =
     }
   | null;
 
-type ColumnEntry<TRow>type ColumnEntry<TRow> = {
+type ColumnEntry<TRow> = {
   column: TableColumn<TRow>;
   originalIndex: number;
   right?: number;
@@ -1194,7 +1194,7 @@ export function VirtualTable<TRow>({
   );
 }
 
-function useElementSize(function useElementSize(ref: RefObject<HTMLElement | null>): Size {
+function useElementSize(ref: RefObject<HTMLElement | null>): Size {
   const [size, setSize] = useState<Size>({ height: 0, width: 0 });
 
   useLayoutEffect(() => {
@@ -1228,7 +1228,7 @@ function useElementSize(function useElementSize(ref: RefObject<HTMLElement | nul
   return size;
 }
 
-function resolveColumnWidth<TRow>(function resolveColumnWidth<TRow>(column: TableColumn<TRow>, width?: number): number {
+function resolveColumnWidth<TRow>(column: TableColumn<TRow>, width?: number): number {
   return clampColumnWidth(column, width ?? column.width ?? defaultColumnWidth);
 }
 
