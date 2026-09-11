@@ -31,6 +31,11 @@ export {
   type TableStateChangeType,
 } from "./data";
 export {
+  defaultTableMessages,
+  type TableMessageOverrides,
+  type TableMessages,
+} from "./messages";
+export {
   DataTable,
   VirtualTable,
   createTableColumnHelper,
