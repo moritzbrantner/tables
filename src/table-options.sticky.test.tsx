@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { VirtualTable, type TableColumn } from "./react";
@@ -29,7 +30,8 @@ const columns: TableColumn<Row>[] = [
 ];
 
 describe("sticky table options ordering", () => {
-  it("matches rendered sticky groups and only reorders within a group", () => {
+  it("matches rendered sticky groups and only reorders within a group", async () => {
+    const user = userEvent.setup();
     const handleStateChange = vi.fn();
 
     render(
@@ -49,7 +51,7 @@ describe("sticky table options ordering", () => {
       screen.getAllByRole("columnheader").map((header) => header.textContent).slice(1),
     ).toEqual(["Left B", "Left A", "Center", "Right"]);
 
-    fireEvent.click(screen.getByRole("button", { name: /open table options/i }));
+    await user.click(screen.getByRole("button", { name: /open table options/i }));
     const dialog = screen.getByRole("dialog", { name: /table options/i });
 
     expect(
@@ -75,7 +77,7 @@ describe("sticky table options ordering", () => {
         .disabled,
     ).toBe(true);
 
-    fireEvent.click(within(dialog).getByRole("button", { name: /move left b down/i }));
+    await user.click(within(dialog).getByRole("button", { name: /move left b down/i }));
 
     expect(handleStateChange).toHaveBeenCalledWith(
       expect.objectContaining({

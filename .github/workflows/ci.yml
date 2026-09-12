@@ -10,7 +10,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -24,32 +24,14 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Lint
-        run: bunx oxlint@1.80.0 --format=github
-
       - name: Install pinned Rust toolchain
         run: rustup toolchain install
 
       - name: Install wasm-pack
         run: if ! command -v wasm-pack; then cargo install wasm-pack --version 0.14.0 --locked; fi
 
-      - name: Build Wasm
-        run: bun run build:wasm
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
 
-      - name: Check types
-        run: bun run check-types
-
-      - name: Test
-        run: bun run test
-
-      - name: Test Wasm parity
-        run: bun run test:wasm-parity
-
-      - name: Build
-        run: bun run build
-
-      - name: Check package
-        run: bun run pack:check
-
-      - name: Build examples
-        run: bun run build:examples
+      - name: Verify
+        run: bun run verify
