@@ -6,6 +6,7 @@ import {
   resolveRenderedColumnOrder,
 } from "./column-layout";
 import type { TableColumnOrderState, TableColumnVisibilityState } from "./data";
+import type { TableMessages } from "./messages";
 import { getColumnLabel, type TableColumn } from "./react-column";
 
 export function TableOptionsMenu<TRow>({
@@ -14,6 +15,7 @@ export function TableOptionsMenu<TRow>({
   columns,
   id,
   menuRef,
+  messages,
   setColumnOrder,
   setColumnVisibility,
   x,
@@ -24,6 +26,7 @@ export function TableOptionsMenu<TRow>({
   columns: readonly TableColumn<TRow>[];
   id: string;
   menuRef: RefObject<HTMLDivElement | null>;
+  messages: TableMessages;
   setColumnOrder: (columnOrder: TableColumnOrderState) => void;
   setColumnVisibility: (columnVisibility: TableColumnVisibilityState) => void;
   x: number;
@@ -51,14 +54,14 @@ export function TableOptionsMenu<TRow>({
 
   return (
     <div
-      aria-label="Table options"
+      aria-label={messages.tableOptions}
       className="mb-table__column-menu mb-table__table-menu"
       id={id}
       ref={menuRef}
       role="dialog"
       style={{ left: x, top: y }}
     >
-      <div className="mb-table__table-menu-title">Columns</div>
+      <div className="mb-table__table-menu-title">{messages.columns}</div>
       <div className="mb-table__table-menu-columns">
         {orderedColumns.map((column, index) => {
           const label = getColumnLabel(column);
@@ -87,7 +90,7 @@ export function TableOptionsMenu<TRow>({
               </label>
               <div className="mb-table__table-menu-reorder">
                 <button
-                  aria-label={`Move ${label} up`}
+                  aria-label={messages.moveColumnUp(label)}
                   className="mb-table__table-menu-move"
                   disabled={!canMoveUp}
                   onClick={() => moveColumn(column.id, -1)}
@@ -98,7 +101,7 @@ export function TableOptionsMenu<TRow>({
                   </svg>
                 </button>
                 <button
-                  aria-label={`Move ${label} down`}
+                  aria-label={messages.moveColumnDown(label)}
                   className="mb-table__table-menu-move"
                   disabled={!canMoveDown}
                   onClick={() => moveColumn(column.id, 1)}
@@ -120,7 +123,7 @@ export function TableOptionsMenu<TRow>({
           onClick={() => setColumnVisibility({})}
           type="button"
         >
-          Show all columns
+          {messages.showAllColumns}
         </button>
         <button
           className="mb-table__column-menu-button"
@@ -128,7 +131,7 @@ export function TableOptionsMenu<TRow>({
           onClick={() => setColumnOrder([])}
           type="button"
         >
-          Reset order
+          {messages.resetOrder}
         </button>
       </div>
     </div>

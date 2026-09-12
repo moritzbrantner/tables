@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -15,13 +14,23 @@ import {
 } from "react";
 
 import {
+  ColumnMenu,
+  clampColumnMenuPosition,
+  getColumnMenuId,
+  getCurrentTime,
+  hasActiveColumnFilter,
+  hasColumnMenuActions,
+  isButtonMenuEnabled,
+  isContextMenuEnabled,
+  resolveColumnMenuOptions,
+  shouldIgnoreColumnMenuScrollClose,
+  type TableColumnMenuOptions,
+} from "./column-menu";
+import { isColumnVisible, resolveColumnOrder, resolveRenderedColumnOrder } from "./column-layout";
+import {
   createTableModel,
   getColumnValue,
   getNextSortState,
-  type TableColumnFilter,
-  type TableColumnType,
-  type TableFilter,
-  type TableFilterOperator,
   type TableModel,
   type TableRowKey,
   type TableSortRule,
@@ -29,8 +38,12 @@ import {
   type TableState,
   type TableStateChange,
 } from "./data";
-import { isColumnVisible, resolveColumnOrder, resolveRenderedColumnOrder } from "./column-layout";
 import { getNextGridPosition, type GridPosition } from "./grid-navigation";
+import {
+  resolveTableMessages,
+  type TableMessageOverrides,
+  type TableMessages,
+} from "./messages";
 import { getColumnLabel, type TableColumn } from "./react-column";
 import { TableOptionsMenu } from "./table-options";
 import { useTableStateController } from "./use-table-state";
@@ -47,7 +60,7 @@ export type { TableColumn } from "./react-column";
 
 export type ColumnResizeMode = "onChange" | "onEnd";
 
-export type TableColumnMenuTrigger = "both" | "button" | "context";
+export type { TableColumnMenuOptions, TableColumnMenuTrigger } from "./column-menu";
 
 export type VirtualTableProps<TRow> = {
   ariaLabel?: string;
@@ -62,6 +75,9 @@ export type VirtualTableProps<TRow> = {
   filteredRowCount?: number;
   height?: number | string;
   initialState?: Partial<TableState<TRow>>;
+  /** Locale used by built-in client-side text matching and sorting. */
+  locale?: string | readonly string[];
+  messages?: TableMessageOverrides;
   isRowSelectable?: (row: TRow, rowIndex: number) => boolean;
   loading?: boolean;
   loadingState?: ReactNode;
@@ -81,13 +97,6 @@ export type VirtualTableProps<TRow> = {
   state?: Partial<TableState<TRow>>;
   striped?: boolean;
   totalRowCount?: number;
-};
-
-export type TableColumnMenuOptions = {
-  filter?: boolean;
-  /** @deprecated Sorting is controlled by the dedicated header sort button. */
-  sort?: boolean;
-  trigger?: TableColumnMenuTrigger;
 };
 
 export type DataTableProps<TRow> = Omit<
@@ -116,18 +125,6 @@ type MenuState =
     }
   | null;
 
-type ResolvedColumnMenuOptions = {
-  filter: boolean;
-  trigger: TableColumnMenuTrigger;
-};
-
-type ColumnFilterDraft = {
-  booleanValue: "false" | "true";
-  operator: TableFilterOperator;
-  value: string;
-  valueEnd: string;
-};
-
 type ColumnEntry<TRow> = {
   column: TableColumn<TRow>;
   originalIndex: number;
@@ -147,25 +144,8 @@ const defaultRowHeight = 44;
 const defaultColumnWidth = 160;
 const defaultRowIndexWidth = 48;
 const tableMenuId = "mb-table-options-menu";
-const columnMenuWidth = 240;
-const columnMenuOffset = 12;
 const defaultMinColumnWidth = 72;
 const defaultMaxColumnWidth = 640;
-const filterOperatorLabels: Record<TableFilterOperator, string> = {
-  between: "Between",
-  contains: "Contains",
-  endsWith: "Ends with",
-  equals: "Equals",
-  gt: "Greater than",
-  gte: "Greater than or equal",
-  in: "In",
-  isNotNull: "Is not empty",
-  isNull: "Is empty",
-  lt: "Less than",
-  lte: "Less than or equal",
-  notEquals: "Does not equal",
-  startsWith: "Starts with",
-};
 
 export function DataTable<TRow>({
   density = "comfortable",
@@ -181,7 +161,7 @@ export function DataTable<TRow>({
 }
 
 export function VirtualTable<TRow>({
-  ariaLabel = "Data table",
+  ariaLabel,
   className,
   columnMenu = false,
   columnOverscan = 1,
@@ -189,13 +169,15 @@ export function VirtualTable<TRow>({
   columnResizing = false,
   columnVirtualization = true,
   columns,
-  emptyState = "No rows",
+  emptyState,
   filteredRowCount,
   height = 520,
   initialState,
   isRowSelectable,
   loading = false,
-  loadingState = "Loading rows",
+  loadingState,
+  locale,
+  messages: messageOverrides,
   mode = "client",
   onModelChange,
   onRowClick,
@@ -212,6 +194,10 @@ export function VirtualTable<TRow>({
   striped = true,
   totalRowCount,
 }: VirtualTableProps<TRow>) {
+  const messages = useMemo(() => resolveTableMessages(messageOverrides), [messageOverrides]);
+  const resolvedAriaLabel = ariaLabel ?? messages.tableAriaLabel;
+  const resolvedEmptyState = emptyState === undefined ? messages.emptyState : emptyState;
+  const resolvedLoadingState = loadingState === undefined ? messages.loadingState : loadingState;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTriggerRef = useRef<HTMLElement | null>(null);
@@ -280,6 +266,7 @@ export function VirtualTable<TRow>({
         : createTableModel({
             columns,
             filter: activeState.filter,
+            locale,
             rows,
             sort: activeState.sort,
           }),
@@ -288,6 +275,7 @@ export function VirtualTable<TRow>({
       activeState.sort,
       columns,
       filteredRowCount,
+      locale,
       mode,
       rows,
       sortedRowCount,
@@ -939,7 +927,7 @@ export function VirtualTable<TRow>({
         <span className="mb-table__header-label">{column.header}</span>
         {column.sortable ? (
           <button
-            aria-label={getSortButtonLabel(label, sortRule)}
+            aria-label={getSortButtonLabel(messages, label, sortRule)}
             className="mb-table__sort-button"
             onClick={(event) => updateSort(column, event.shiftKey)}
             type="button"
@@ -954,7 +942,7 @@ export function VirtualTable<TRow>({
             aria-controls={isMenuOpen ? menuId : undefined}
             aria-expanded={isMenuOpen}
             aria-haspopup="dialog"
-            aria-label={`Open column actions for ${label}`}
+            aria-label={messages.openColumnActions(label)}
             className={[
               "mb-table__column-menu-trigger",
               isMenuOpen ? "mb-table__column-menu-trigger--open" : "",
@@ -969,7 +957,7 @@ export function VirtualTable<TRow>({
         ) : null}
         {canResize ? (
           <button
-            aria-label={`Resize ${label}`}
+            aria-label={messages.resizeColumn(label)}
             className="mb-table__resize-handle"
             onDoubleClick={(event) => resetColumnWidth(event, column)}
             onKeyDown={(event) => handleResizeKeyDown(event, column, width)}
@@ -1021,13 +1009,13 @@ export function VirtualTable<TRow>({
 
   return (
     <section
-      aria-label={ariaLabel}
       className={["mb-table", striped ? "mb-table--striped" : "", className ?? ""]
         .filter(Boolean)
         .join(" ")}
       style={{ "--mb-table-row-height": `${rowHeight}px`, height } as CSSProperties}
     >
       <div
+        aria-label={resolvedAriaLabel}
         ref={scrollRef}
         className="mb-table__scroll"
         onScroll={handleScroll}
@@ -1060,7 +1048,7 @@ export function VirtualTable<TRow>({
                   aria-controls={menuState?.kind === "table" ? tableMenuId : undefined}
                   aria-expanded={menuState?.kind === "table"}
                   aria-haspopup="dialog"
-                  aria-label="Open table options"
+                  aria-label={messages.openTableOptions}
                   className="mb-table__index-menu-trigger"
                   onClick={handleTableMenuButtonClick}
                   type="button"
@@ -1164,11 +1152,11 @@ export function VirtualTable<TRow>({
         </div>
       </div>
       {!loading && model.rows.length === 0 ? (
-        <div className="mb-table__state">{emptyState}</div>
+        <div className="mb-table__state">{resolvedEmptyState}</div>
       ) : null}
       {loading ? (
         <div className="mb-table__state" role="status">
-          {loadingState}
+          {resolvedLoadingState}
         </div>
       ) : null}
       {menuState?.kind === "column" && activeMenuColumn ? (
@@ -1180,6 +1168,7 @@ export function VirtualTable<TRow>({
           key={activeMenuColumn.id}
           menuOptions={columnMenuOptions}
           menuRef={menuRef}
+          messages={messages}
           rows={rows}
           setFilter={setFilter}
           x={menuState.x}
@@ -1193,6 +1182,7 @@ export function VirtualTable<TRow>({
           columns={columns}
           id={tableMenuId}
           menuRef={menuRef}
+          messages={messages}
           setColumnOrder={setColumnOrder}
           setColumnVisibility={setColumnVisibility}
           x={menuState.x}
@@ -1200,181 +1190,6 @@ export function VirtualTable<TRow>({
         />
       ) : null}
     </section>
-  );
-}
-
-function ColumnMenu<TRow>({
-  activeFilter,
-  closeMenu,
-  column,
-  id,
-  menuOptions,
-  menuRef,
-  rows,
-  setFilter,
-  x,
-  y,
-}: {
-  activeFilter: TableFilter<TRow> | null;
-  closeMenu: () => void;
-  column: TableColumn<TRow>;
-  id: string;
-  menuOptions: ResolvedColumnMenuOptions;
-  menuRef: RefObject<HTMLDivElement | null>;
-  rows: readonly TRow[];
-  setFilter: (filter: TableFilter<TRow> | null) => void;
-  x: number;
-  y: number;
-}) {
-  const columnType = resolveColumnFilterType(column, rows);
-  const filterOptions = columnType === "string" ? column.filterOptions : undefined;
-  const activeColumnFilter = activeFilter?.columnFilters?.find(
-    (filter) => filter.columnId === column.id,
-  );
-  const categorical = Boolean(filterOptions?.length);
-  const categoricalValues = getCategoricalFilterValues(activeColumnFilter, filterOptions);
-  const [draft, setDraft] = useState<ColumnFilterDraft>(() =>
-    createInitialColumnFilterDraft(columnType, activeColumnFilter, categorical),
-  );
-  const operators = getFilterOperators(columnType, categorical);
-  const canApplyFilter = isColumnFilterDraftValid(columnType, draft);
-  const showFilter = menuOptions.filter && column.filterable !== false;
-  const label = getColumnLabel(column);
-
-  const updateDraft = (updates: Partial<ColumnFilterDraft>) => {
-    setDraft((current) => ({ ...current, ...updates }));
-  };
-  const toggleCategoricalValue = (option: string) => {
-    const nextValues = categoricalValues.includes(option)
-      ? categoricalValues.filter((value) => value !== option)
-      : [...categoricalValues, option];
-
-    setFilter(
-      nextValues.length > 0
-        ? replaceColumnFilter(activeFilter, {
-            columnId: column.id,
-            operator: "in",
-            value: nextValues,
-          })
-        : removeColumnFilter(activeFilter, column.id),
-    );
-  };
-  const applyFilter = () => {
-    const columnFilter = createColumnFilterFromDraft(column.id, columnType, draft);
-
-    if (!columnFilter) {
-      return;
-    }
-
-    setFilter(replaceColumnFilter(activeFilter, columnFilter));
-    closeMenu();
-  };
-  const clearColumnFilter = () => {
-    setFilter(removeColumnFilter(activeFilter, column.id));
-    closeMenu();
-  };
-  const clearAllFilters = () => {
-    setFilter(clearStructuredFilters(activeFilter));
-    closeMenu();
-  };
-
-  return (
-    <div
-      aria-label={`Column actions for ${label}`}
-      className="mb-table__column-menu"
-      id={id}
-      ref={menuRef}
-      role="dialog"
-      style={{ left: x, top: y }}
-    >
-
-      {showFilter ? (
-        <div className="mb-table__column-menu-section">
-          {categorical ? (
-            <>
-              <div
-                aria-label={`Filter ${label}`}
-                className="mb-table__column-menu-section"
-                role="group"
-              >
-                {filterOptions?.map((option) => {
-                  const selected = categoricalValues.includes(option);
-
-                  return (
-                    <button
-                      aria-label={option}
-                      aria-pressed={selected}
-                      className="mb-table__column-menu-button"
-                      key={option}
-                      onClick={() => toggleCategoricalValue(option)}
-                      type="button"
-                    >
-                      <span aria-hidden="true">{selected ? "✓ " : "○ "}</span>
-                      <span>{option}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                className="mb-table__column-menu-button"
-                disabled={!activeColumnFilter}
-                onClick={clearColumnFilter}
-                type="button"
-              >
-                Clear filter
-              </button>
-            </>
-          ) : (
-            <>
-              <label className="mb-table__column-menu-field">
-                <span>Filter</span>
-                <select
-                  onChange={(event) =>
-                    updateDraft({ operator: event.target.value as TableFilterOperator })
-                  }
-                  value={draft.operator}
-                >
-                  {operators.map((operator) => (
-                    <option key={operator} value={operator}>
-                      {filterOperatorLabels[operator]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {renderFilterValueControl(columnType, undefined, draft, updateDraft)}
-
-              <div className="mb-table__column-menu-actions">
-                <button
-                  className="mb-table__column-menu-button"
-                  disabled={!canApplyFilter}
-                  onClick={applyFilter}
-                  type="button"
-                >
-                  Apply
-                </button>
-                <button
-                  className="mb-table__column-menu-button"
-                  disabled={!activeColumnFilter}
-                  onClick={clearColumnFilter}
-                  type="button"
-                >
-                  Clear filter
-                </button>
-              </div>
-            </>
-          )}
-          <button
-            className="mb-table__column-menu-button"
-            disabled={!activeFilter?.columnFilters?.length}
-            onClick={clearAllFilters}
-            type="button"
-          >
-            Clear all filters
-          </button>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -1410,425 +1225,6 @@ function useElementSize(ref: RefObject<HTMLElement | null>): Size {
   }, [ref]);
 
   return size;
-}
-
-function renderFilterValueControl(
-  columnType: TableColumnType,
-  filterOptions: readonly string[] | undefined,
-  draft: ColumnFilterDraft,
-  updateDraft: (updates: Partial<ColumnFilterDraft>) => void,
-) {
-  if (!filterOperatorNeedsValue(draft.operator)) {
-    return null;
-  }
-
-  if (filterOptions?.length) {
-    return (
-      <label className="mb-table__column-menu-field">
-        <span>Value</span>
-        <select
-          onChange={(event) => updateDraft({ value: event.target.value })}
-          value={draft.value}
-        >
-          <option value="">Select value</option>
-          {filterOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
-
-  if (columnType === "boolean") {
-    return (
-      <label className="mb-table__column-menu-field">
-        <span>Value</span>
-        <select
-          onChange={(event) =>
-            updateDraft({ booleanValue: event.target.value as "false" | "true" })
-          }
-          value={draft.booleanValue}
-        >
-          <option value="true">True</option>
-          <option value="false">False</option>
-        </select>
-      </label>
-    );
-  }
-
-  const inputType = columnType === "number" ? "number" : columnType === "date" ? "datetime-local" : "text";
-
-  if (draft.operator === "between") {
-    return (
-      <>
-        <label className="mb-table__column-menu-field">
-          <span>From</span>
-          <input
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              updateDraft({ value: event.target.value })
-            }
-            type={inputType}
-            value={draft.value}
-          />
-        </label>
-        <label className="mb-table__column-menu-field">
-          <span>To</span>
-          <input
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              updateDraft({ valueEnd: event.target.value })
-            }
-            type={inputType}
-            value={draft.valueEnd}
-          />
-        </label>
-      </>
-    );
-  }
-
-  return (
-    <label className="mb-table__column-menu-field">
-      <span>Value</span>
-      <input
-        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-          updateDraft({ value: event.target.value })
-        }
-        type={inputType}
-        value={draft.value}
-      />
-    </label>
-  );
-}
-
-function resolveColumnMenuOptions(
-  columnMenu: boolean | TableColumnMenuOptions,
-): ResolvedColumnMenuOptions {
-  if (columnMenu === true) {
-    return { filter: true, trigger: "both" };
-  }
-
-  if (columnMenu === false) {
-    return { filter: false, trigger: "context" };
-  }
-
-  return {
-    filter: columnMenu.filter === true,
-    trigger: columnMenu.trigger ?? "both",
-  };
-}
-
-function hasColumnMenuActions<TRow>(
-  column: TableColumn<TRow>,
-  menuOptions: ResolvedColumnMenuOptions,
-) {
-  return menuOptions.filter && column.filterable !== false;
-}
-
-function isButtonMenuEnabled(menuOptions: ResolvedColumnMenuOptions) {
-  return menuOptions.trigger === "button" || menuOptions.trigger === "both";
-}
-
-function isContextMenuEnabled(menuOptions: ResolvedColumnMenuOptions) {
-  return menuOptions.trigger === "context" || menuOptions.trigger === "both";
-}
-
-function clampColumnMenuPosition(x: number, y: number) {
-  if (typeof window === "undefined") {
-    return { x, y };
-  }
-
-  return {
-    x: Math.max(
-      columnMenuOffset,
-      Math.min(x, window.innerWidth - columnMenuWidth - columnMenuOffset),
-    ),
-    y: Math.max(columnMenuOffset, Math.min(y, window.innerHeight - columnMenuOffset)),
-  };
-}
-
-function shouldIgnoreColumnMenuScrollClose(ignoreUntil: number) {
-  return getCurrentTime() < ignoreUntil;
-}
-
-function getCurrentTime() {
-  return typeof performance === "undefined" ? Date.now() : performance.now();
-}
-
-function hasActiveColumnFilter<TRow>(
-  filter: TableFilter<TRow> | null | undefined,
-  columnId: string,
-) {
-  return filter?.columnFilters?.some((columnFilter) => columnFilter.columnId === columnId) ?? false;
-}
-
-function getCategoricalFilterValues(
-  filter: TableColumnFilter | undefined,
-  filterOptions: readonly string[] | undefined,
-): string[] {
-  if (!filter || !filterOptions?.length) {
-    return [];
-  }
-
-  const values =
-    filter.operator === "in" && Array.isArray(filter.value)
-      ? filter.value
-      : filter.operator === "equals"
-        ? [filter.value]
-        : [];
-  const selectedValues = new Set(
-    values.filter((value): value is string => typeof value === "string"),
-  );
-
-  return filterOptions.filter((option) => selectedValues.has(option));
-}
-
-function replaceColumnFilter<TRow>(
-  filter: TableFilter<TRow> | null,
-  columnFilter: TableColumnFilter,
-): TableFilter<TRow> | null {
-  return normalizeTableFilter({
-    ...filter,
-    columnFilters: [
-      ...(filter?.columnFilters?.filter((candidate) => candidate.columnId !== columnFilter.columnId) ??
-        []),
-      columnFilter,
-    ],
-  });
-}
-
-function removeColumnFilter<TRow>(
-  filter: TableFilter<TRow> | null,
-  columnId: string,
-): TableFilter<TRow> | null {
-  return normalizeTableFilter({
-    ...filter,
-    columnFilters: filter?.columnFilters?.filter((candidate) => candidate.columnId !== columnId) ?? [],
-  });
-}
-
-function clearStructuredFilters<TRow>(
-  filter: TableFilter<TRow> | null,
-): TableFilter<TRow> | null {
-  return normalizeTableFilter({
-    ...filter,
-    columnFilters: [],
-  });
-}
-
-function normalizeTableFilter<TRow>(filter: TableFilter<TRow>): TableFilter<TRow> | null {
-  const columnFilters = filter.columnFilters?.length ? filter.columnFilters : undefined;
-  const hasQuery = Boolean(filter.query?.trim());
-
-  if (!hasQuery && !columnFilters?.length) {
-    return null;
-  }
-
-  return {
-    ...(columnFilters ? { columnFilters } : {}),
-    ...(filter.predicate ? { predicate: filter.predicate } : {}),
-    ...(filter.query !== undefined ? { query: filter.query } : {}),
-    ...(filter.queryColumnIds ? { queryColumnIds: filter.queryColumnIds } : {}),
-  };
-}
-
-function resolveColumnFilterType<TRow>(
-  column: TableColumn<TRow>,
-  rows: readonly TRow[],
-): TableColumnType {
-  if (column.type) {
-    return column.type;
-  }
-
-  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-    const value = getColumnValue(column, rows[rowIndex], rowIndex);
-
-    if (value == null) {
-      continue;
-    }
-
-    if (value instanceof Date) {
-      return "date";
-    }
-
-    if (Array.isArray(value)) {
-      return "json";
-    }
-
-    switch (typeof value) {
-      case "boolean":
-        return "boolean";
-      case "number":
-        return "number";
-      case "object":
-        return "json";
-      case "string":
-        return "string";
-      default:
-        return "unknown";
-    }
-  }
-
-  return "unknown";
-}
-
-function createInitialColumnFilterDraft(
-  columnType: TableColumnType,
-  filter: TableColumnFilter | undefined,
-  categorical = false,
-): ColumnFilterDraft {
-  const operators = getFilterOperators(columnType, categorical);
-  const defaultOperator = getDefaultFilterOperator(columnType, categorical);
-
-  return {
-    booleanValue: typeof filter?.value === "boolean" && !filter.value ? "false" : "true",
-    operator: filter && operators.includes(filter.operator) ? filter.operator : defaultOperator,
-    value: filterValueToDraftString(filter?.value, 0),
-    valueEnd: filterValueToDraftString(filter?.value, 1),
-  };
-}
-
-function filterValueToDraftString(
-  value: TableColumnFilter["value"],
-  index: number,
-) {
-  const draftValue = Array.isArray(value) ? value[index] : index === 0 ? value : undefined;
-
-  if (draftValue instanceof Date) {
-    return dateToInputValue(draftValue);
-  }
-
-  if (typeof draftValue === "number" || typeof draftValue === "string") {
-    return String(draftValue);
-  }
-
-  return "";
-}
-
-function getDefaultFilterOperator(
-  columnType: TableColumnType,
-  categorical = false,
-): TableFilterOperator {
-  if (categorical) {
-    return "equals";
-  }
-
-  if (columnType === "date") {
-    return "gte";
-  }
-
-  if (columnType === "number" || columnType === "boolean") {
-    return "equals";
-  }
-
-  return "contains";
-}
-
-function getFilterOperators(
-  columnType: TableColumnType,
-  categorical = false,
-): TableFilterOperator[] {
-  if (categorical) {
-    return ["equals", "notEquals", "isNull", "isNotNull"];
-  }
-
-  if (columnType === "boolean") {
-    return ["equals", "notEquals", "isNull", "isNotNull"];
-  }
-
-  if (columnType === "number" || columnType === "date") {
-    return ["equals", "notEquals", "gt", "gte", "lt", "lte", "between", "isNull", "isNotNull"];
-  }
-
-  return ["contains", "equals", "notEquals", "startsWith", "endsWith", "isNull", "isNotNull"];
-}
-
-function isColumnFilterDraftValid(
-  columnType: TableColumnType,
-  draft: ColumnFilterDraft,
-) {
-  if (!filterOperatorNeedsValue(draft.operator)) {
-    return true;
-  }
-
-  if (columnType === "boolean") {
-    return draft.booleanValue === "true" || draft.booleanValue === "false";
-  }
-
-  if (draft.operator === "between") {
-    return isDraftValueValid(columnType, draft.value) && isDraftValueValid(columnType, draft.valueEnd);
-  }
-
-  return isDraftValueValid(columnType, draft.value);
-}
-
-function isDraftValueValid(columnType: TableColumnType, value: string) {
-  if (!value.trim()) {
-    return false;
-  }
-
-  if (columnType === "number") {
-    return Number.isFinite(Number(value));
-  }
-
-  if (columnType === "date") {
-    return !Number.isNaN(new Date(value).getTime());
-  }
-
-  return true;
-}
-
-function createColumnFilterFromDraft(
-  columnId: string,
-  columnType: TableColumnType,
-  draft: ColumnFilterDraft,
-): TableColumnFilter | null {
-  if (!isColumnFilterDraftValid(columnType, draft)) {
-    return null;
-  }
-
-  if (!filterOperatorNeedsValue(draft.operator)) {
-    return {
-      columnId,
-      operator: draft.operator,
-    };
-  }
-
-  if (draft.operator === "between") {
-    return {
-      columnId,
-      operator: draft.operator,
-      value: [parseDraftValue(columnType, draft.value), parseDraftValue(columnType, draft.valueEnd)],
-    };
-  }
-
-  return {
-    columnId,
-    operator: draft.operator,
-    value: columnType === "boolean" ? draft.booleanValue === "true" : parseDraftValue(columnType, draft.value),
-  };
-}
-
-function parseDraftValue(columnType: TableColumnType, value: string) {
-  if (columnType === "number") {
-    return Number(value);
-  }
-
-  if (columnType === "date") {
-    return new Date(value);
-  }
-
-  return value;
-}
-
-function filterOperatorNeedsValue(operator: TableFilterOperator) {
-  return operator !== "isNull" && operator !== "isNotNull";
-}
-
-function dateToInputValue(value: Date) {
-  const offsetValue = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
-
-  return offsetValue.toISOString().slice(0, 16);
 }
 
 function resolveColumnWidth<TRow>(column: TableColumn<TRow>, width?: number): number {
@@ -2052,20 +1448,20 @@ function getAriaSort(sort: TableSortState, columnId: string) {
   return sort[index].direction === "asc" ? "ascending" : "descending";
 }
 
-function getSortButtonLabel(label: string, rule: TableSortRule | null) {
+function getSortButtonLabel(
+  messages: TableMessages,
+  label: string,
+  rule: TableSortRule | null,
+) {
   if (!rule) {
-    return `Sort ${label} ascending`;
+    return messages.sortAscending(label);
   }
 
   if (rule.direction === "asc") {
-    return `Sort ${label} descending`;
+    return messages.sortDescending(label);
   }
 
-  return `Clear sort for ${label}`;
-}
-
-function getColumnMenuId(columnId: string) {
-  return `mb-table-column-menu-${columnId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  return messages.clearSort(label);
 }
 
 function renderCellValue(value: unknown) {

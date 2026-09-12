@@ -97,6 +97,7 @@ export type TableStateChange<TRow> = {
 export type TableModelOptions<TRow> = {
   columns: readonly TableDataColumn<TRow>[];
   filter?: TableFilter<TRow> | null;
+  locale?: string | readonly string[];
   rows: readonly TRow[];
   sort?: TableSortState;
 };
@@ -112,12 +113,13 @@ export type TableModel<TRow> = {
 export function createTableModel<TRow>({
   columns,
   filter,
+  locale,
   rows,
   sort,
 }: TableModelOptions<TRow>): TableModel<TRow> {
   const kernel = getTableQueryKernel();
 
-  if (kernel && !hasActivePredicate(filter)) {
+  if (kernel && locale === undefined && !hasActivePredicate(filter)) {
     const result = kernel.queryTable(rows, columns, hasTableFilter(filter) ? filter : null, sort);
     const modelRows = rowsFromSourceIndices(rows, result.sourceIndices);
 
@@ -131,10 +133,10 @@ export function createTableModel<TRow>({
   }
 
   const filteredRows = filter && hasTableFilter(filter)
-    ? applyTableFilter(rows, columns, filter)
+    ? applyTableFilter(rows, columns, filter, locale)
     : Array.from(rows);
   const sortedRows = sort && sort.length > 0
-    ? applyTableSort(filteredRows, columns, sort)
+    ? applyTableSort(filteredRows, columns, sort, locale)
     : filteredRows;
 
   return {
@@ -150,6 +152,7 @@ export function applyTableFilter<TRow>(
   rows: readonly TRow[],
   columns: readonly TableDataColumn<TRow>[],
   filter: TableFilter<TRow>,
+  locale?: string | readonly string[],
 ): TRow[] {
   const query = filter.query?.trim() ?? "";
   const structuredFilters = filter.columnFilters ?? [];
@@ -159,8 +162,8 @@ export function applyTableFilter<TRow>(
   }
 
   const kernel = getTableQueryKernel();
-  if (!kernel) {
-    return applyTableFilterTypeScript(rows, columns, filter);
+  if (!kernel || locale !== undefined) {
+    return applyTableFilterTypeScript(rows, columns, filter, locale);
   }
 
   const builtIn = kernel.queryTable(rows, columns, filter, []);
@@ -187,17 +190,18 @@ export function applyTableSort<TRow>(
   rows: readonly TRow[],
   columns: readonly TableDataColumn<TRow>[],
   sort: TableSortState,
+  locale?: string | readonly string[],
 ): TRow[] {
   if (sort.length === 0) {
     return Array.from(rows);
   }
 
   const kernel = getTableQueryKernel();
-  if (kernel) {
+  if (kernel && locale === undefined) {
     return rowsFromSourceIndices(rows, kernel.queryTable(rows, columns, null, sort).sourceIndices);
   }
 
-  return applyTableSortTypeScript(rows, columns, sort);
+  return applyTableSortTypeScript(rows, columns, sort, locale);
 }
 
 export function getColumnValue<TRow, TValue>(
@@ -242,6 +246,7 @@ export function getNextSortState(
 export function compareTableValues(
   left: string | number | boolean | Date | null | undefined,
   right: string | number | boolean | Date | null | undefined,
+  locale?: string | readonly string[],
 ): number {
   if (left == null && right == null) {
     return 0;
@@ -266,10 +271,7 @@ export function compareTableValues(
     return Number(leftValue) - Number(rightValue);
   }
 
-  return String(leftValue).localeCompare(String(rightValue), undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
+  return getTableCollator(locale).compare(String(leftValue), String(rightValue));
 }
 
 export function createDefaultTableState<TRow>(
@@ -333,15 +335,19 @@ function applyTableFilterTypeScript<TRow>(
   rows: readonly TRow[],
   columns: readonly TableDataColumn<TRow>[],
   filter: TableFilter<TRow>,
+  locale?: string | readonly string[],
 ): TRow[] {
   const query = filter.query?.trim() ?? "";
   const structuredFilters = filter.columnFilters ?? [];
   const searchColumns = getFilterColumns(columns, filter.queryColumnIds);
+  const collator = getTableCollator(locale);
 
   return rows.filter((row, rowIndex) => {
     const structuredMatch = structuredFilters.every((columnFilter) => {
       const column = columns.find((candidate) => candidate.id === columnFilter.columnId);
-      return column ? matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter) : false;
+      return column
+        ? matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter, locale, collator)
+        : false;
     });
 
     if (!structuredMatch) {
@@ -352,8 +358,9 @@ function applyTableFilterTypeScript<TRow>(
       return true;
     }
 
+    const normalizedQuery = query.toLocaleLowerCase(normalizeLocaleInput(locale));
     const searchMatch = searchColumns.some((column) =>
-      normalizeSearchText(getColumnValue(column, row, rowIndex)).includes(query.toLowerCase()),
+      normalizeSearchText(getColumnValue(column, row, rowIndex), locale).includes(normalizedQuery),
     );
 
     return searchMatch || filter.predicate?.(row, rowIndex, filter.query ?? "") === true;
@@ -364,6 +371,7 @@ function applyTableSortTypeScript<TRow>(
   rows: readonly TRow[],
   columns: readonly TableDataColumn<TRow>[],
   sort: TableSortState,
+  locale?: string | readonly string[],
 ): TRow[] {
   const rules = sort.flatMap((rule) => {
     const column = columns.find((candidate) => candidate.id === rule.columnId);
@@ -373,6 +381,8 @@ function applyTableSortTypeScript<TRow>(
   if (rules.length === 0) {
     return Array.from(rows);
   }
+
+  const collator = getTableCollator(locale);
 
   return rows
     .map((row, rowIndex) => ({ row, rowIndex }))
@@ -384,7 +394,7 @@ function applyTableSortTypeScript<TRow>(
         const rightValue = rule.column.sortAccessor
           ? rule.column.sortAccessor(right.row, right.rowIndex)
           : getColumnValue(rule.column, right.row, right.rowIndex);
-        const comparison = compareForSort(leftValue, rightValue, rule.direction);
+        const comparison = compareForSort(leftValue, rightValue, rule.direction, collator);
         if (comparison !== 0) {
           return comparison;
         }
@@ -395,7 +405,12 @@ function applyTableSortTypeScript<TRow>(
     .map(({ row }) => row);
 }
 
-function matchesColumnFilter(value: unknown, filter: TableColumnFilter): boolean {
+function matchesColumnFilter(
+  value: unknown,
+  filter: TableColumnFilter,
+  locale: string | readonly string[] | undefined,
+  collator: Intl.Collator,
+): boolean {
   const operator = filter.operator;
   if (operator === "isNull") {
     return value == null;
@@ -404,14 +419,14 @@ function matchesColumnFilter(value: unknown, filter: TableColumnFilter): boolean
     return value != null;
   }
   if (operator === "equals") {
-    return filterValuesEqual(value, filter.value, filter.caseSensitive === true);
+    return filterValuesEqual(value, filter.value, filter.caseSensitive === true, collator);
   }
   if (operator === "notEquals") {
-    return !filterValuesEqual(value, filter.value, filter.caseSensitive === true);
+    return !filterValuesEqual(value, filter.value, filter.caseSensitive === true, collator);
   }
   if (operator === "in") {
     return Array.isArray(filter.value) && filter.value.some((candidate) =>
-      filterValuesEqual(value, candidate, filter.caseSensitive === true),
+      filterValuesEqual(value, candidate, filter.caseSensitive === true, collator),
     );
   }
 
@@ -424,7 +439,7 @@ function matchesColumnFilter(value: unknown, filter: TableColumnFilter): boolean
     return matchesBooleanFilter(value, filter);
   }
 
-  return matchesStringFilter(value, filter);
+  return matchesStringFilter(value, filter, locale);
 }
 
 function matchesNumericFilter(actual: number, filter: TableColumnFilter): boolean {
@@ -468,9 +483,13 @@ function matchesBooleanFilter(actual: boolean, filter: TableColumnFilter): boole
   }
 }
 
-function matchesStringFilter(value: unknown, filter: TableColumnFilter): boolean {
-  const actual = normalizeStringValue(value, filter.caseSensitive === true);
-  const expected = normalizeStringValue(filter.value, filter.caseSensitive === true);
+function matchesStringFilter(
+  value: unknown,
+  filter: TableColumnFilter,
+  locale?: string | readonly string[],
+): boolean {
+  const actual = normalizeStringValue(value, filter.caseSensitive === true, locale);
+  const expected = normalizeStringValue(filter.value, filter.caseSensitive === true, locale);
 
   switch (filter.operator) {
     case "contains":
@@ -484,19 +503,32 @@ function matchesStringFilter(value: unknown, filter: TableColumnFilter): boolean
   }
 }
 
-function filterValuesEqual(left: unknown, right: unknown, caseSensitive: boolean): boolean {
+function filterValuesEqual(
+  left: unknown,
+  right: unknown,
+  caseSensitive: boolean,
+  collator: Intl.Collator,
+): boolean {
   if (left == null || right == null || Array.isArray(right)) {
     return left === right;
   }
 
   if (typeof left === "string" || typeof right === "string") {
-    return normalizeStringValue(left, caseSensitive) === normalizeStringValue(right, caseSensitive);
+    if (caseSensitive) {
+      return stringifyCellValue(left) === stringifyCellValue(right);
+    }
+    return collator.compare(stringifyCellValue(left), stringifyCellValue(right)) === 0;
   }
 
   return stringifyCellValue(left) === stringifyCellValue(right);
 }
 
-function compareForSort(left: unknown, right: unknown, direction: TableSortDirection): number {
+function compareForSort(
+  left: unknown,
+  right: unknown,
+  direction: TableSortDirection,
+  collator: Intl.Collator,
+): number {
   const leftNull = left == null || (typeof left === "number" && !Number.isFinite(left));
   const rightNull = right == null || (typeof right === "number" && !Number.isFinite(right));
 
@@ -519,7 +551,7 @@ function compareForSort(left: unknown, right: unknown, direction: TableSortDirec
   } else {
     const leftString = stringifyCellValue(leftValue);
     const rightString = stringifyCellValue(rightValue);
-    comparison = leftString === rightString ? 0 : leftString < rightString ? -1 : 1;
+    comparison = collator.compare(leftString, rightString);
   }
 
   return direction === "asc" ? comparison : -comparison;
@@ -551,13 +583,31 @@ function hasActivePredicate<TRow>(filter: TableFilter<TRow> | null | undefined):
   return Boolean(filter?.query?.trim() && filter.predicate);
 }
 
-function normalizeSearchText(value: unknown): string {
-  return stringifyCellValue(value).toLowerCase();
+function normalizeSearchText(
+  value: unknown,
+  locale?: string | readonly string[],
+): string {
+  return stringifyCellValue(value).toLocaleLowerCase(normalizeLocaleInput(locale));
 }
 
-function normalizeStringValue(value: unknown, caseSensitive: boolean): string {
+function normalizeStringValue(
+  value: unknown,
+  caseSensitive: boolean,
+  locale?: string | readonly string[],
+): string {
   const string = stringifyCellValue(value);
-  return caseSensitive ? string : string.toLowerCase();
+  return caseSensitive ? string : string.toLocaleLowerCase(normalizeLocaleInput(locale));
+}
+
+function normalizeLocaleInput(locale?: string | readonly string[]) {
+  return typeof locale === "string" || locale === undefined ? locale : [...locale];
+}
+
+function getTableCollator(locale?: string | readonly string[]) {
+  return new Intl.Collator(normalizeLocaleInput(locale), {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 function stringifyCellValue(value: unknown): string {
