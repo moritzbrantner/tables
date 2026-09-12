@@ -122,6 +122,11 @@ select {
   min-width: 0;
 }
 
+.table-panel a {
+  color: var(--demo-accent);
+  text-underline-offset: 3px;
+}
+
 .table-note {
   background: var(--demo-surface);
   color: var(--demo-fg);
@@ -225,6 +230,44 @@ select {
   justify-self: start;
   max-width: 420px;
   width: min(420px, 100%);
+}
+
+.variations-grid,
+.benchmark-grid {
+  align-items: start;
+}
+
+.composition-summary {
+  border-left: 3px solid var(--demo-border);
+  display: grid;
+  gap: 2px;
+  padding: 2px 0 2px 12px;
+}
+
+.composition-summary strong {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.composition-summary span,
+.benchmark-actions span,
+.benchmark-environment,
+.benchmark-footnote {
+  color: var(--demo-muted);
+  font-size: 13px;
+}
+
+.benchmark-environment,
+.benchmark-footnote {
+  margin: 0;
+}
+
+.benchmark-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 @media (max-width: 980px) {
