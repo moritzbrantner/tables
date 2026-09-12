@@ -13,11 +13,13 @@ export default defineConfig({
   build: {
     rolldownOptions: {
       input: {
+        benchmarks: path.resolve(examplesDir, "benchmarks.html"),
         dense: path.resolve(examplesDir, "dense.html"),
         index: path.resolve(examplesDir, "index.html"),
         localization: path.resolve(examplesDir, "localization.html"),
         server: path.resolve(examplesDir, "server.html"),
         states: path.resolve(examplesDir, "states.html"),
+        variations: path.resolve(examplesDir, "variations.html"),
         wide: path.resolve(examplesDir, "wide.html"),
       },
     },
