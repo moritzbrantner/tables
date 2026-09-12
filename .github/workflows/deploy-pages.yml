@@ -35,6 +35,9 @@ jobs:
       - name: Validate and build site
         run: bun run check:pages
 
+      - name: Capture Pages query benchmark
+        run: bun run benchmark:query -- --output dist-examples/benchmarks/query.json
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
