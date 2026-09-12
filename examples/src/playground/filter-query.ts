@@ -5,7 +5,8 @@ export function updateFilterQuery<TRow>(
   query: string,
 ): TableFilter<TRow> | null {
   const trimmedQuery = query.trim();
-  const { query: _previousQuery, ...rest } = filter ?? {};
+  const rest: TableFilter<TRow> = filter ? { ...filter } : {};
+  delete rest.query;
 
   if (trimmedQuery) {
     return { ...rest, query };
