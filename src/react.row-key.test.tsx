@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { VirtualTable, type TableColumn } from "./react";
@@ -13,7 +14,8 @@ const columns: TableColumn<Row>[] = [
 ];
 
 describe("VirtualTable row keys", () => {
-  it("preserves numeric property keys in selection state", () => {
+  it("preserves numeric property keys in selection state", async () => {
+    const user = userEvent.setup();
     const onStateChange = vi.fn();
 
     render(
@@ -28,7 +30,7 @@ describe("VirtualTable row keys", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("row", { name: /answer/i }));
+    await user.click(screen.getByRole("row", { name: /answer/i }));
 
     expect(onStateChange).toHaveBeenCalledWith(
       expect.objectContaining({

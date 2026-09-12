@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { VirtualTable, type TableColumn } from "./react";
@@ -29,10 +30,11 @@ const columns: TableColumn<Row>[] = [
 ];
 
 describe("typed column filters", () => {
-  it("uses a text input for string columns", () => {
+  it("uses a text input for string columns", async () => {
+    const user = userEvent.setup();
     renderTable();
 
-    fireEvent.click(screen.getByRole("button", { name: /open column actions for name/i }));
+    await user.click(screen.getByRole("button", { name: /open column actions for name/i }));
     const value = within(screen.getByRole("dialog", { name: /column actions for name/i })).getByLabelText(
       "Value",
     ) as HTMLInputElement;
@@ -41,10 +43,11 @@ describe("typed column filters", () => {
     expect(value.type).toBe("text");
   });
 
-  it("uses a number input for number columns", () => {
+  it("uses a number input for number columns", async () => {
+    const user = userEvent.setup();
     renderTable();
 
-    fireEvent.click(screen.getByRole("button", { name: /open column actions for value/i }));
+    await user.click(screen.getByRole("button", { name: /open column actions for value/i }));
     const value = within(screen.getByRole("dialog", { name: /column actions for value/i })).getByLabelText(
       "Value",
     ) as HTMLInputElement;
@@ -53,34 +56,35 @@ describe("typed column filters", () => {
     expect(value.type).toBe("number");
   });
 
-  it("uses direct multi-select enum filters without an operator dropdown", () => {
+  it("uses direct multi-select enum filters without an operator dropdown", async () => {
+    const user = userEvent.setup();
     renderTable();
 
-    fireEvent.click(screen.getByRole("button", { name: /open column actions for stage/i }));
+    await user.click(screen.getByRole("button", { name: /open column actions for stage/i }));
     const dialog = screen.getByRole("dialog", { name: /column actions for stage/i });
 
     expect(within(dialog).queryByLabelText("Filter")).toBeNull();
     expect(within(dialog).queryByRole("button", { name: /apply/i })).toBeNull();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Proposal" }));
+    await user.click(within(dialog).getByRole("button", { name: "Proposal" }));
     expect(
       within(dialog).getByRole("button", { name: "Proposal" }).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(screen.getByText("Alpha")).toBeTruthy();
     expect(screen.queryByText("Beta")).toBeNull();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Closed" }));
+    await user.click(within(dialog).getByRole("button", { name: "Closed" }));
     expect(
       within(dialog).getByRole("button", { name: "Closed" }).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(screen.getByText("Alpha")).toBeTruthy();
     expect(screen.getByText("Beta")).toBeTruthy();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Proposal" }));
+    await user.click(within(dialog).getByRole("button", { name: "Proposal" }));
     expect(screen.queryByText("Alpha")).toBeNull();
     expect(screen.getByText("Beta")).toBeTruthy();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Closed" }));
+    await user.click(within(dialog).getByRole("button", { name: "Closed" }));
     expect(screen.getByText("Alpha")).toBeTruthy();
     expect(screen.getByText("Beta")).toBeTruthy();
   });

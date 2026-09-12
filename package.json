@@ -76,9 +76,11 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.1.14",
     "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.7",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
@@ -98,6 +100,10 @@
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
+    "benchmark:browser": "bun ./scripts/benchmark-table-browser.ts",
+    "benchmark:compare": "bun ./scripts/compare-table-benchmarks.ts",
+    "benchmark:query": "bun ./scripts/benchmark-table-query.ts",
+    "benchmark:tables": "bun run benchmark:query && bun run benchmark:browser",
     "benchmark:virtualization": "bun run build:wasm:node:release && bun ./scripts/benchmark-virtualization.ts",
     "build": "tsup src/index.ts src/table.tsx src/react-rust.tsx src/data.ts src/server.ts src/view-state.ts src/virtualization.ts src/wasm.ts --format esm --dts --clean --out-dir dist && node ./scripts/copy-wasm.mjs",
     "build:examples": "vite build --outDir ../dist-examples --emptyOutDir",
@@ -108,11 +114,14 @@
     "check:pages": "bun run check-types && bun run test && bun run build:examples:pages",
     "check-types": "tsc --noEmit",
     "dev": "vite --host 0.0.0.0",
+    "lint": "bunx oxlint@1.80.0",
     "pack:check": "bun run build && node ./scripts/check-wasm-package.mjs && publint --pack bun --strict",
     "prepack": "bun run build:wasm && bun run build",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:wasm-parity": "bun run build:wasm:node && TABLES_WASM_PARITY=1 vitest run src/wasm-parity.test.ts",
-    "verify": "bun run build:wasm && bun run check-types && bun run test && bun run test:wasm-parity && bun run build && bun run pack:check"
+    "verify": "bun run verify:fast && bun run build:wasm && bun run test:wasm-parity && bun run build && bun run pack:check && bun run verify:browser",
+    "verify:browser": "bun run build:examples && bun run test:e2e",
+    "verify:fast": "bun run lint && bun run check-types && bun run test"
   }
 }

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { VirtualTable, type TableColumn } from "./react";
@@ -21,7 +22,8 @@ const columns: TableColumn<Row>[] = [
 ];
 
 describe("VirtualTable keyboard grid", () => {
-  it("uses one roving data-cell tab stop and navigates with arrows and boundaries", () => {
+  it("uses one roving data-cell tab stop and navigates with arrows and boundaries", async () => {
+    const user = userEvent.setup();
     render(
       <VirtualTable
         columnVirtualization={false}
@@ -36,20 +38,21 @@ describe("VirtualTable keyboard grid", () => {
     expect(cells.map((cell) => cell.tabIndex)).toEqual([0, -1, -1, -1, -1, -1]);
 
     cells[0].focus();
-    fireEvent.keyDown(cells[0], { key: "ArrowRight" });
+    await user.keyboard("{ArrowRight}");
     expect(document.activeElement?.textContent).toBe("20");
 
-    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowDown" });
+    await user.keyboard("{ArrowDown}");
     expect(document.activeElement?.textContent).toBe("10");
 
-    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Home" });
+    await user.keyboard("{Home}");
     expect(document.activeElement?.textContent).toBe("Beta");
 
-    fireEvent.keyDown(document.activeElement as HTMLElement, { ctrlKey: true, key: "End" });
+    await user.keyboard("{Control>}{End}{/Control}");
     expect(document.activeElement?.textContent).toBe("30");
   });
 
-  it("keeps nested controls independently operable", () => {
+  it("keeps nested controls independently operable", async () => {
+    const user = userEvent.setup();
     const interactiveColumns: TableColumn<Row>[] = [
       {
         accessor: "name",
@@ -72,12 +75,13 @@ describe("VirtualTable keyboard grid", () => {
 
     const nestedButton = screen.getByRole("button", { name: "Open Alpha" });
     nestedButton.focus();
-    fireEvent.keyDown(nestedButton, { key: "ArrowRight" });
+    await user.keyboard("{ArrowRight}");
 
     expect(document.activeElement).toBe(nestedButton);
   });
 
-  it("activates and selects the focused row from a grid cell", () => {
+  it("activates and selects the focused row from a grid cell", async () => {
+    const user = userEvent.setup();
     const onRowClick = vi.fn();
 
     render(
@@ -95,7 +99,7 @@ describe("VirtualTable keyboard grid", () => {
     const row = screen.getByRole("row", { name: /alpha 20/i });
     const cell = within(row).getAllByRole("gridcell")[0] as HTMLElement;
     cell.focus();
-    fireEvent.keyDown(cell, { key: "Enter" });
+    await user.keyboard("{Enter}");
 
     expect(row.getAttribute("aria-selected")).toBe("true");
     expect(onRowClick).toHaveBeenCalledWith(rows[0], 0);
@@ -120,7 +124,8 @@ describe("VirtualTable keyboard grid", () => {
     expect(renderedRows[1].getAttribute("aria-rowindex")).toBe("2");
   });
 
-  it("resizes columns from the keyboard", () => {
+  it("resizes columns from the keyboard", async () => {
+    const user = userEvent.setup();
     const onStateChange = vi.fn();
 
     render(
@@ -135,9 +140,8 @@ describe("VirtualTable keyboard grid", () => {
       />,
     );
 
-    fireEvent.keyDown(screen.getByRole("button", { name: /resize value/i }), {
-      key: "ArrowRight",
-    });
+    screen.getByRole("button", { name: /resize value/i }).focus();
+    await user.keyboard("{ArrowRight}");
 
     expect(onStateChange).toHaveBeenCalledWith(
       expect.objectContaining({
