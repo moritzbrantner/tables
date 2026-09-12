@@ -351,7 +351,10 @@ function runQuickComparison(): BrowserComparisonResult[] {
 
     const tableParity = tablesOperation();
     const referenceParity = referenceOperation();
-    if (tableParity.length !== referenceParity.length) {
+    const hasParity =
+      tableParity.length === referenceParity.length &&
+      tableParity.every((row, index) => row.id === referenceParity[index]?.id);
+    if (!hasParity) {
       throw new Error(`Benchmark parity failed at ${size.toLocaleString()} rows.`);
     }
 
@@ -367,12 +370,13 @@ function runQuickComparison(): BrowserComparisonResult[] {
 }
 
 function referenceQuery(rows: readonly BenchmarkRow[]) {
-  return rows
-    .filter((row) => row.stage === "Proposal" && row.name.toLowerCase().includes("account"))
-    .toSorted((left, right) => {
-      const region = left.region.localeCompare(right.region);
-      return region || right.value - left.value;
-    });
+  const filteredRows = rows.filter(
+    (row) => row.stage === "Proposal" && row.name.toLowerCase().includes("account"),
+  );
+  return [...filteredRows].sort((left, right) => {
+    const region = left.region.localeCompare(right.region);
+    return region || right.value - left.value;
+  });
 }
 
 function measureMedian(operation: () => unknown) {
