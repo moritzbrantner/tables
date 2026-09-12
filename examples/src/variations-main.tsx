@@ -29,6 +29,7 @@ import {
   formatDate,
 } from "./playground/data";
 import { ExampleNav } from "./playground/example-nav";
+import { updateFilterQuery } from "./playground/filter-query";
 import { TablePanel } from "./playground/table-panel";
 import type { AuditRow, PipelineRow, TableDensity } from "./playground/model";
 import "./styles.css";
@@ -108,7 +109,9 @@ function VariationsPage() {
                 <Label>Search pipeline</Label>
                 <SearchField
                   inputProps={{ "aria-label": "Search pipeline variation" }}
-                  onValueChange={(query) => setFilter(query.trim() ? { query } : null)}
+                  onValueChange={(query) =>
+                    setFilter((currentFilter) => updateFilterQuery(currentFilter, query))
+                  }
                   placeholder="Account, owner, region..."
                   value={filter?.query ?? ""}
                 />
