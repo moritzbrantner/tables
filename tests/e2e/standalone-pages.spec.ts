@@ -23,3 +23,18 @@ test("uses standalone Pages styling without legacy theme variables", async ({ pa
 
   expect(unresolvedThemeVariables).toEqual([]);
 });
+
+test("exposes variations and benchmark evidence from Pages navigation", async ({ page }) => {
+  await page.goto("/variations.html");
+
+  await expect(page.getByRole("heading", { name: "Table variations" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Benchmarks" })).toBeVisible();
+  await expect(page.getByLabel("Pipeline result sample")).toBeVisible();
+  await expect(page.getByLabel("Searchable pipeline variation")).toBeVisible();
+
+  await page.goto("/benchmarks.html");
+
+  await expect(page.getByRole("heading", { name: "Benchmarks" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Run in this browser" })).toBeVisible();
+  await expect(page.getByLabel("Comparable React table implementations")).toBeVisible();
+});
