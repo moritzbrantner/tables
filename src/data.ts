@@ -341,29 +341,33 @@ function applyTableFilterTypeScript<TRow>(
   const structuredFilters = filter.columnFilters ?? [];
   const searchColumns = getFilterColumns(columns, filter.queryColumnIds);
   const collator = getTableCollator(locale);
+  const normalizedQuery = query.toLocaleLowerCase(normalizeLocaleInput(locale));
+  const resolvedFilters = structuredFilters.map((columnFilter) => ({
+    column: columns.find((candidate) => candidate.id === columnFilter.columnId),
+    columnFilter,
+  }));
 
   return rows.filter((row, rowIndex) => {
-    const structuredMatch = structuredFilters.every((columnFilter) => {
-      const column = columns.find((candidate) => candidate.id === columnFilter.columnId);
-      return column
-        ? matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter, locale, collator)
-        : false;
-    });
-
-    if (!structuredMatch) {
-      return false;
+    for (const { column, columnFilter } of resolvedFilters) {
+      if (
+        !column ||
+        !matchesColumnFilter(getColumnValue(column, row, rowIndex), columnFilter, locale, collator)
+      ) {
+        return false;
+      }
     }
 
-    if (!query) {
+    if (!normalizedQuery) {
       return true;
     }
 
-    const normalizedQuery = query.toLocaleLowerCase(normalizeLocaleInput(locale));
-    const searchMatch = searchColumns.some((column) =>
-      normalizeSearchText(getColumnValue(column, row, rowIndex), locale).includes(normalizedQuery),
-    );
+    for (const column of searchColumns) {
+      if (normalizeSearchText(getColumnValue(column, row, rowIndex), locale).includes(normalizedQuery)) {
+        return true;
+      }
+    }
 
-    return searchMatch || filter.predicate?.(row, rowIndex, filter.query ?? "") === true;
+    return filter.predicate?.(row, rowIndex, filter.query ?? "") === true;
   });
 }
 
@@ -383,6 +387,25 @@ function applyTableSortTypeScript<TRow>(
   }
 
   const collator = getTableCollator(locale);
+  const allRulesUsePropertyAccessors = rules.every(
+    (rule) => !rule.column.sortAccessor && typeof rule.column.accessor !== "function",
+  );
+
+  if (allRulesUsePropertyAccessors) {
+    const sortedRows = Array.from(rows);
+    sortedRows.sort((left, right) => {
+      for (const rule of rules) {
+        const accessor = rule.column.accessor as keyof TRow;
+        const comparison = compareForSort(left[accessor], right[accessor], rule.direction, collator);
+        if (comparison !== 0) {
+          return comparison;
+        }
+      }
+
+      return 0;
+    });
+    return sortedRows;
+  }
 
   return rows
     .map((row, rowIndex) => ({ row, rowIndex }))
