@@ -13,6 +13,17 @@ This document records the architecture already established on `main`. It replace
 
 Consumers should choose the smallest surface that satisfies the use case. The semantic lane must not inherit interactive-grid dependencies merely to share implementation.
 
+## Data lifetime
+
+Data lifetime is independent from the rendering lane and processing mode.
+
+- A static table receives an immutable row snapshot that does not change for the lifetime of the rendered view.
+- A changing table receives successive immutable row snapshots as application data changes. Replacing the row snapshot must not reset table-owned view state such as column order, column visibility, sizing, filtering, sorting, or selection.
+- `mode="client"` versus `mode="manual"` describes who owns filtering/sorting/query processing. It does not describe whether the underlying data is static or changing.
+- Applications own fetching, polling, subscriptions, cache invalidation, and persistence. `tables` consumes the current snapshot and keeps presentation state independent from that snapshot.
+
+Column identity is therefore stable and schema-oriented: visibility and order are keyed by column id, not by a particular row snapshot. The interactive table options may expose both pointer drag reordering and explicit move controls; both must resolve through the same deterministic ordering rule and must preserve sticky-column group boundaries.
+
 ## Ownership
 
 - `tables-core` owns built-in table query semantics and table-specific hot-path kernels: structured filtering, global search, stable multi-sort, source-index selection, and the Rust-owned operations that have measured reasons to live there.
@@ -27,6 +38,8 @@ Consumers should choose the smallest surface that satisfies the use case. The se
 The repository-owned model is canonical. TanStack Table is not the semantic authority for this package, and `@moritzbrantner/viz-engine` is no longer part of normal table processing.
 
 The public interactive state contract is `TableState`: sorting, filtering, selection, column sizing, visibility, and ordering are independently controlled by property presence. `initialState` seeds uncontrolled fields and `onStateChange` reports complete proposed state transitions.
+
+Durable view state remains storage-agnostic. Applications may serialize table-owned, non-sensitive state to URL parameters, local storage, or a backend without making `tables` responsible for persistence.
 
 ## Query boundary
 

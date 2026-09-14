@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useState, type DragEvent, type RefObject } from "react";
 
 import {
   getColumnStickyGroup,
@@ -8,6 +8,37 @@ import {
 import type { TableColumnOrderState, TableColumnVisibilityState } from "./data";
 import type { TableMessages } from "./messages";
 import { getColumnLabel, type TableColumn } from "./react-column";
+
+export function reorderTableColumns<TRow>(
+  columns: readonly TableColumn<TRow>[],
+  columnOrder: TableColumnOrderState,
+  sourceColumnId: string,
+  targetColumnId: string,
+): TableColumnOrderState {
+  const orderedColumns = resolveRenderedColumnOrder(columns, columnOrder);
+  const sourceIndex = orderedColumns.findIndex((column) => column.id === sourceColumnId);
+  const targetIndex = orderedColumns.findIndex((column) => column.id === targetColumnId);
+  const sourceColumn = orderedColumns[sourceIndex];
+  const targetColumn = orderedColumns[targetIndex];
+
+  if (
+    !sourceColumn ||
+    !targetColumn ||
+    sourceIndex === targetIndex ||
+    getColumnStickyGroup(sourceColumn) !== getColumnStickyGroup(targetColumn)
+  ) {
+    return columnOrder;
+  }
+
+  const ids = orderedColumns.map((column) => column.id);
+  const [movedColumnId] = ids.splice(sourceIndex, 1);
+  if (!movedColumnId) {
+    return columnOrder;
+  }
+
+  ids.splice(targetIndex, 0, movedColumnId);
+  return ids;
+}
 
 export function TableOptionsMenu<TRow>({
   columnOrder,
@@ -32,24 +63,60 @@ export function TableOptionsMenu<TRow>({
   x: number;
   y: number;
 }) {
+  const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
   const orderedColumns = resolveRenderedColumnOrder(columns, columnOrder);
-  const moveColumn = (columnId: string, offset: -1 | 1) => {
-    const ids = orderedColumns.map((column) => column.id);
-    const index = ids.indexOf(columnId);
-    const nextIndex = index + offset;
-    const column = orderedColumns[index];
-    const nextColumn = orderedColumns[nextIndex];
+  const moveColumn = (sourceColumnId: string, targetColumnId: string) => {
+    const nextColumnOrder = reorderTableColumns(
+      columns,
+      columnOrder,
+      sourceColumnId,
+      targetColumnId,
+    );
+    if (nextColumnOrder !== columnOrder) {
+      setColumnOrder(nextColumnOrder);
+    }
+  };
+  const moveColumnByOffset = (columnId: string, offset: -1 | 1) => {
+    const index = orderedColumns.findIndex((column) => column.id === columnId);
+    const targetColumn = orderedColumns[index + offset];
+    if (targetColumn) {
+      moveColumn(columnId, targetColumn.id);
+    }
+  };
+  const canDropOnColumn = (targetColumnId: string) => {
+    if (!draggedColumnId || draggedColumnId === targetColumnId) {
+      return false;
+    }
 
-    if (
-      !column ||
-      !nextColumn ||
-      getColumnStickyGroup(column) !== getColumnStickyGroup(nextColumn)
-    ) {
+    const draggedColumn = orderedColumns.find((column) => column.id === draggedColumnId);
+    const targetColumn = orderedColumns.find((column) => column.id === targetColumnId);
+    return Boolean(
+      draggedColumn &&
+        targetColumn &&
+        getColumnStickyGroup(draggedColumn) === getColumnStickyGroup(targetColumn),
+    );
+  };
+  const handleDragStart = (event: DragEvent<HTMLElement>, columnId: string) => {
+    setDraggedColumnId(columnId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", columnId);
+  };
+  const handleDragOver = (event: DragEvent<HTMLDivElement>, targetColumnId: string) => {
+    if (!canDropOnColumn(targetColumnId)) {
       return;
     }
 
-    [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
-    setColumnOrder(ids);
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  };
+  const handleDrop = (event: DragEvent<HTMLDivElement>, targetColumnId: string) => {
+    if (!draggedColumnId || !canDropOnColumn(targetColumnId)) {
+      return;
+    }
+
+    event.preventDefault();
+    moveColumn(draggedColumnId, targetColumnId);
+    setDraggedColumnId(null);
   };
 
   return (
@@ -74,7 +141,12 @@ export function TableOptionsMenu<TRow>({
             nextColumn !== undefined && getColumnStickyGroup(nextColumn) === stickyGroup;
 
           return (
-            <div className="mb-table__table-menu-column" key={column.id}>
+            <div
+              className="mb-table__table-menu-column"
+              key={column.id}
+              onDragOver={(event) => handleDragOver(event, column.id)}
+              onDrop={(event) => handleDrop(event, column.id)}
+            >
               <label className="mb-table__table-menu-visibility">
                 <input
                   checked={isColumnVisible(columnVisibility, column.id)}
@@ -89,11 +161,28 @@ export function TableOptionsMenu<TRow>({
                 <span>{label}</span>
               </label>
               <div className="mb-table__table-menu-reorder">
+                <span
+                  aria-hidden="true"
+                  className="mb-table__table-menu-move"
+                  draggable
+                  onDragEnd={() => setDraggedColumnId(null)}
+                  onDragStart={(event) => handleDragStart(event, column.id)}
+                  style={{ cursor: draggedColumnId === column.id ? "grabbing" : "grab" }}
+                >
+                  <svg aria-hidden="true" fill="currentColor" height="14" viewBox="0 0 16 16" width="14">
+                    <circle cx="5" cy="4" r="1" />
+                    <circle cx="11" cy="4" r="1" />
+                    <circle cx="5" cy="8" r="1" />
+                    <circle cx="11" cy="8" r="1" />
+                    <circle cx="5" cy="12" r="1" />
+                    <circle cx="11" cy="12" r="1" />
+                  </svg>
+                </span>
                 <button
                   aria-label={messages.moveColumnUp(label)}
                   className="mb-table__table-menu-move"
                   disabled={!canMoveUp}
-                  onClick={() => moveColumn(column.id, -1)}
+                  onClick={() => moveColumnByOffset(column.id, -1)}
                   type="button"
                 >
                   <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
@@ -104,7 +193,7 @@ export function TableOptionsMenu<TRow>({
                   aria-label={messages.moveColumnDown(label)}
                   className="mb-table__table-menu-move"
                   disabled={!canMoveDown}
-                  onClick={() => moveColumn(column.id, 1)}
+                  onClick={() => moveColumnByOffset(column.id, 1)}
                   type="button"
                 >
                   <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
