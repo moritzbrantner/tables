@@ -46,9 +46,9 @@ describe("VirtualTable data lifetime", () => {
       />,
     );
 
-    expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
-    expect(screen.getByText("Beta")).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "Region" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Alpha")).toBeNull();
+    expect(screen.getByText("Beta")).not.toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Region" })).toBeNull();
 
     const visibleHeaders = screen
       .getAllByRole("columnheader")
