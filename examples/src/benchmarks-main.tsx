@@ -282,7 +282,7 @@ function BenchmarksPage() {
 
         <TablePanel
           title="Same-browser quick comparison"
-          description="This compares the table query model with an equivalent plain-JavaScript filter and stable multi-column sort on the same generated rows. It is a local reference, not a universal ranking."
+          description="This compares the table query model with plain JavaScript using the same generated-fixture semantics: an exact stage filter, name-only case-insensitive search, and stable multi-column sort. It is a local reference, not a universal ranking."
         >
           <div className="benchmark-actions">
             <Button disabled={running} onClick={runBrowserComparison}>
@@ -338,8 +338,11 @@ function runQuickComparison(): BrowserComparisonResult[] {
       createTableModel({
         columns: queryColumns,
         filter: {
-          columnFilters: [{ columnId: "stage", operator: "equals", value: "Proposal" }],
+          columnFilters: [
+            { caseSensitive: true, columnId: "stage", operator: "equals", value: "Proposal" },
+          ],
           query: "account",
+          queryColumnIds: ["name"],
         },
         rows,
         sort: [
