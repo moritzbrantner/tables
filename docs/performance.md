@@ -9,6 +9,7 @@
 - Use `sortAccessor` when a rendered cell value is formatted but sorting should use a raw value.
 - Keep `column.width` explicit for wide tables. Column virtualization depends on predictable widths.
 - Memoize `columns`. Column definitions participate in model building, width calculation, and virtualization.
+- Treat each local data refresh as a replacement immutable `rows` snapshot. The Rust/Wasm query index is prepared and reused by snapshot identity rather than rematerialized for every filter/sort change.
 - For remote data sets, run filtering and sorting on the server, pass the current window into `rows`, and set `mode="manual"`.
 - Use sticky columns sparingly. Sticky cells stay mounted even when center columns are virtualized.
 - Prefer explicit `minWidth`, `width`, and `maxWidth` for resizable operational tables so horizontal scrolling remains predictable.
@@ -23,13 +24,15 @@ The repository separates three kinds of evidence instead of collapsing them into
 
 ### Query/model workloads
 
-`bun run benchmark:query` measures deterministic client-side table operations at 1,000, 10,000, and 100,000 rows:
+`bun run benchmark:query` measures deterministic TypeScript fallback operations at 1,000, 10,000, and 100,000 rows:
 
 - global text filtering;
 - structured filtering;
 - multi-column sorting;
 - combined model filtering/sorting;
 - controlled table-state updates.
+
+It also records the same query semantics used by the GitHub Pages quick comparison at 1,000, 10,000, and 50,000 rows, together with the matching plain-JavaScript reference. This keeps the fallback path visible in CI even though the interactive Pages comparison loads the production Rust/Wasm query kernel before it measures.
 
 The command performs one warm-up invocation followed by five timed samples per workload and records the median plus all samples. It writes `.artifacts/table-query-benchmark.json` with Bun, OS, architecture, CPU model, and CPU-count metadata.
 
@@ -44,11 +47,19 @@ The command performs one warm-up invocation followed by five timed samples per w
 
 Each workload has one warm-up plus three timed samples. Results and browser/environment metadata are written to `.artifacts/table-browser-benchmark.json`.
 
+The interactive GitHub Pages quick comparison loads the Rust/Wasm kernel first, performs parity/preparation outside the timed samples, then times repeated queries over the same immutable row snapshot. This makes the comparison represent the production repeated-query path rather than charging one-time index materialization to every filter/sort operation.
+
 ### TypeScript/Wasm boundary
 
-`bun run benchmark:virtualization` remains the lower-level boundary measurement for the TypeScript and Rust/Wasm virtualization paths. It is intentionally separate from browser rendering and query/model timing.
+`bun run benchmark:virtualization` is the lower-level TypeScript/Rust/Wasm boundary measurement. In addition to virtualization geometry it records the 50,000-row query workload in three forms:
 
-`bun run benchmark:tables` runs the query and browser benchmark suites together. The Rust Foundation workflow publishes the resulting JSON reports plus the descriptive Rust benchmark output as a `table-benchmarks-<sha>` artifact for each relevant exact head.
+- repeated Rust/Wasm query with a prepared immutable snapshot;
+- the equivalent plain-JavaScript reference;
+- a cold Rust/Wasm query that intentionally uses a fresh column-schema identity and therefore includes materialization.
+
+The report records both the repeated-Wasm/reference ratio and the cold-materialization/repeated-query ratio. That keeps the optimization evidence honest: avoiding repeated materialization should improve the hot path without hiding the cost of preparing a new snapshot/schema.
+
+`bun run benchmark:tables` runs the TypeScript query and browser benchmark suites together. The Rust Foundation workflow separately publishes the Wasm-boundary report and publishes the JSON query/browser reports plus descriptive Rust benchmark output as exact-head artifacts.
 
 ## Comparing runs
 

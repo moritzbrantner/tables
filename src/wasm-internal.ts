@@ -59,6 +59,21 @@ type IndexedColumn<TRow> = {
   type: TableColumnType;
 };
 
+type PreparedTableIndex<TRow> = {
+  columns: readonly TableDataColumn<TRow>[];
+  columnsById: Map<string, TableDataColumn<TRow>>;
+  index: GeneratedTableIndex;
+  indexedById: Map<string, IndexedColumn<TRow>>;
+  sortColumnIndices: Map<string, number>;
+};
+
+type PreparedTableIndexCache = {
+  get<TRow>(
+    rows: readonly TRow[],
+    columns: readonly TableDataColumn<TRow>[],
+  ): PreparedTableIndex<TRow>;
+};
+
 type WasmTableFilterValue =
   | { kind: "none" }
   | { kind: "number"; value: number }
@@ -90,8 +105,11 @@ type WasmTableQuery = {
   }>;
 };
 
+const MAX_PREPARED_SCHEMA_VARIANTS_PER_ROWS = 4;
+
 export function createTableWasmKernelFromModule(value: unknown): TableWasmKernel {
   const module = normalizeGeneratedModule(value);
+  const tableIndexCache = createPreparedTableIndexCache(module);
 
   return {
     createVariableLayout(itemSizes) {
@@ -135,97 +153,171 @@ export function createTableWasmKernelFromModule(value: unknown): TableWasmKernel
       );
     },
     queryTable(rows, columns, filter, sort = []) {
-      return queryTableWithRust(module, rows, columns, filter, sort);
+      return queryTableWithRust(tableIndexCache, rows, columns, filter, sort);
+    },
+  };
+}
+
+function createPreparedTableIndexCache(module: GeneratedTablesWasmModule): PreparedTableIndexCache {
+  const cachedByRows = new WeakMap<object, PreparedTableIndex<unknown>[]>();
+  const finalizer = new FinalizationRegistry<GeneratedTableIndex>((index) => {
+    index.free();
+  });
+
+  return {
+    get<TRow>(rows: readonly TRow[], columns: readonly TableDataColumn<TRow>[]) {
+      const rowsKey = rows as object;
+      let cached = cachedByRows.get(rowsKey);
+      if (!cached) {
+        cached = [];
+        cachedByRows.set(rowsKey, cached);
+      }
+
+      const existingIndex = cached.findIndex((entry) => entry.columns === columns);
+      if (existingIndex >= 0) {
+        const existing = cached[existingIndex] as PreparedTableIndex<TRow>;
+        cached.splice(existingIndex, 1);
+        cached.push(existing as PreparedTableIndex<unknown>);
+        return existing;
+      }
+
+      const index = new module.WasmTableIndex();
+      const prepared: PreparedTableIndex<TRow> = {
+        columns,
+        columnsById: new Map(columns.map((column) => [column.id, column])),
+        index,
+        indexedById: new Map(),
+        sortColumnIndices: new Map(),
+      };
+      cached.push(prepared as PreparedTableIndex<unknown>);
+      finalizer.register(rowsKey, index, index);
+
+      if (cached.length > MAX_PREPARED_SCHEMA_VARIANTS_PER_ROWS) {
+        const evicted = cached.shift();
+        if (evicted) {
+          finalizer.unregister(evicted.index);
+          evicted.index.free();
+        }
+      }
+
+      return prepared;
     },
   };
 }
 
 function queryTableWithRust<TRow>(
-  module: GeneratedTablesWasmModule,
+  cache: PreparedTableIndexCache,
   rows: readonly TRow[],
   columns: readonly TableDataColumn<TRow>[],
   filter: TableFilter<TRow> | null | undefined,
   sort: TableSortState,
 ): TableQueryResult {
-  const index = new module.WasmTableIndex();
-
-  try {
-    const indexedColumns = indexColumns(index, rows, columns);
-    const indexedById = new Map(indexedColumns.map((entry) => [entry.column.id, entry]));
-    const sortColumnIndices = new Map<string, number>();
-
-    for (const rule of sort) {
-      const entry = indexedById.get(rule.columnId);
-      if (!entry || !entry.column.sortAccessor) {
-        continue;
-      }
-
-      const values = rows.map((row, rowIndex) => entry.column.sortAccessor?.(row, rowIndex));
-      sortColumnIndices.set(
-        rule.columnId,
-        addValuesColumn(index, values, inferTableColumnType(values)),
-      );
-    }
-
-    const filters: WasmTableQuery["filters"] = [];
-    for (const columnFilter of filter?.columnFilters ?? []) {
-      const entry = indexedById.get(columnFilter.columnId);
-      if (!entry) {
-        return { filteredRowCount: 0, sourceIndices: [] };
-      }
-
-      const value = prepareFilterValue(columnFilter, entry.type);
-      if (!value) {
-        return { filteredRowCount: 0, sourceIndices: [] };
-      }
-
-      filters.push({
-        caseSensitive: columnFilter.caseSensitive === true,
-        columnIndex: entry.columnIndex,
-        operator: normalizeNullFilterOperator(columnFilter),
-        value,
-      });
-    }
-
-    const query: WasmTableQuery = {
-      filters,
-      rowOffset: 0,
-      search: createSearch(filter, indexedById),
-      sort: sort.flatMap((rule) => {
-        const entry = indexedById.get(rule.columnId);
-        if (!entry) {
-          return [];
-        }
-
-        return [{
-          columnIndex: sortColumnIndices.get(rule.columnId) ?? entry.columnIndex,
-          direction: rule.direction,
-          nulls: rule.direction === "desc" ? "first" as const : "last" as const,
-        }];
-      }),
-    };
-
-    return decodeTableQueryResult(index.query(query), rows.length);
-  } finally {
-    index.free();
+  const queryText = filter?.query?.trim();
+  const columnFilters = filter?.columnFilters ?? [];
+  if (!queryText && columnFilters.length === 0 && sort.length === 0) {
+    return identityTableQueryResult(rows.length);
   }
+
+  const prepared = cache.get(rows, columns);
+  const filters: WasmTableQuery["filters"] = [];
+
+  for (const columnFilter of columnFilters) {
+    const entry = ensureIndexedColumn(prepared, rows, columnFilter.columnId);
+    if (!entry) {
+      return { filteredRowCount: 0, sourceIndices: [] };
+    }
+
+    const value = prepareFilterValue(columnFilter, entry.type);
+    if (!value) {
+      return { filteredRowCount: 0, sourceIndices: [] };
+    }
+
+    filters.push({
+      caseSensitive: columnFilter.caseSensitive === true,
+      columnIndex: entry.columnIndex,
+      operator: normalizeNullFilterOperator(columnFilter),
+      value,
+    });
+  }
+
+  const search = createSearch(filter, prepared, rows);
+  const wasmSort: WasmTableQuery["sort"] = [];
+  for (const rule of sort) {
+    const columnIndex = ensureSortColumn(prepared, rows, rule.columnId);
+    if (columnIndex === undefined) {
+      continue;
+    }
+
+    wasmSort.push({
+      columnIndex,
+      direction: rule.direction,
+      nulls: rule.direction === "desc" ? "first" : "last",
+    });
+  }
+
+  if (filters.length === 0 && !search && wasmSort.length === 0) {
+    return identityTableQueryResult(rows.length);
+  }
+
+  const query: WasmTableQuery = {
+    filters,
+    rowOffset: 0,
+    search,
+    sort: wasmSort,
+  };
+
+  return decodeTableQueryResult(prepared.index.query(query), rows.length);
 }
 
-function indexColumns<TRow>(
-  index: GeneratedTableIndex,
+function ensureIndexedColumn<TRow>(
+  prepared: PreparedTableIndex<TRow>,
   rows: readonly TRow[],
-  columns: readonly TableDataColumn<TRow>[],
-): IndexedColumn<TRow>[] {
-  return columns.map((column) => {
-    const values = rows.map((row, rowIndex) => getColumnValue(column, row, rowIndex));
-    const type = column.type ?? inferTableColumnType(values);
+  columnId: string,
+): IndexedColumn<TRow> | undefined {
+  const existing = prepared.indexedById.get(columnId);
+  if (existing) {
+    return existing;
+  }
 
-    return {
-      column,
-      columnIndex: addValuesColumn(index, values, type),
-      type,
-    };
-  });
+  const column = prepared.columnsById.get(columnId);
+  if (!column) {
+    return undefined;
+  }
+
+  const values = rows.map((row, rowIndex) => getColumnValue(column, row, rowIndex));
+  const type = column.type ?? inferTableColumnType(values);
+  const indexed = {
+    column,
+    columnIndex: addValuesColumn(prepared.index, values, type),
+    type,
+  } satisfies IndexedColumn<TRow>;
+  prepared.indexedById.set(columnId, indexed);
+  return indexed;
+}
+
+function ensureSortColumn<TRow>(
+  prepared: PreparedTableIndex<TRow>,
+  rows: readonly TRow[],
+  columnId: string,
+): number | undefined {
+  const existing = prepared.sortColumnIndices.get(columnId);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const column = prepared.columnsById.get(columnId);
+  if (!column) {
+    return undefined;
+  }
+
+  if (!column.sortAccessor) {
+    return ensureIndexedColumn(prepared, rows, columnId)?.columnIndex;
+  }
+
+  const values = rows.map((row, rowIndex) => column.sortAccessor?.(row, rowIndex));
+  const columnIndex = addValuesColumn(prepared.index, values, inferTableColumnType(values));
+  prepared.sortColumnIndices.set(columnId, columnIndex);
+  return columnIndex;
 }
 
 function addValuesColumn(
@@ -250,24 +342,43 @@ function addValuesColumn(
 
 function createSearch<TRow>(
   filter: TableFilter<TRow> | null | undefined,
-  indexedById: Map<string, IndexedColumn<TRow>>,
+  prepared: PreparedTableIndex<TRow>,
+  rows: readonly TRow[],
 ): WasmTableQuery["search"] {
   const query = filter?.query?.trim();
   if (!query) {
     return undefined;
   }
 
-  const requested = filter?.queryColumnIds?.length
-    ? new Set(filter.queryColumnIds)
-    : null;
-  const columnIndices = Array.from(indexedById.values())
-    .filter((entry) => !requested || requested.has(entry.column.id))
-    .map((entry) => entry.columnIndex);
+  const requestedColumnIds = filter?.queryColumnIds?.length
+    ? filter.queryColumnIds
+    : prepared.columns.map((column) => column.id);
+  const columnIndices: number[] = [];
+  const seen = new Set<string>();
+
+  for (const columnId of requestedColumnIds) {
+    if (seen.has(columnId)) {
+      continue;
+    }
+    seen.add(columnId);
+
+    const entry = ensureIndexedColumn(prepared, rows, columnId);
+    if (entry) {
+      columnIndices.push(entry.columnIndex);
+    }
+  }
 
   return {
     caseSensitive: false,
     columnIndices,
     query,
+  };
+}
+
+function identityTableQueryResult(rowCount: number): TableQueryResult {
+  return {
+    filteredRowCount: rowCount,
+    sourceIndices: Array.from({ length: rowCount }, (_, index) => index),
   };
 }
 

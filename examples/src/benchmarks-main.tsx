@@ -7,6 +7,7 @@ import {
   type TableColumnDef,
   type TableDataColumn,
 } from "@moritzbrantner/tables";
+import { loadTableWasmKernel } from "@moritzbrantner/tables/wasm";
 import "../../table.css";
 import { Alert, AlertDescription, Button, ViewHeader } from "./demo-ui";
 import { ExampleNav } from "./playground/example-nav";
@@ -220,18 +221,21 @@ function BenchmarksPage() {
     return parts.join(" · ");
   }, [report]);
 
-  const runBrowserComparison = () => {
+  const runBrowserComparison = async () => {
     setRunning(true);
     setBrowserError(null);
-    window.setTimeout(() => {
-      try {
-        setBrowserResults(runQuickComparison());
-      } catch (error) {
-        setBrowserError(error instanceof Error ? error.message : String(error));
-      } finally {
-        setRunning(false);
+    try {
+      const kernel = await loadTableWasmKernel();
+      if (!kernel) {
+        throw new Error("The tables Rust/Wasm query kernel could not be loaded in this browser.");
       }
-    }, 0);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      setBrowserResults(runQuickComparison());
+    } catch (error) {
+      setBrowserError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRunning(false);
+    }
   };
 
   return (
@@ -282,13 +286,13 @@ function BenchmarksPage() {
 
         <TablePanel
           title="Same-browser quick comparison"
-          description="This compares the table query model with plain JavaScript using the same generated-fixture semantics: an exact stage filter, name-only case-insensitive search, and stable multi-column sort. It is a local reference, not a universal ranking."
+          description="This compares the production Rust/Wasm-backed table query model with plain JavaScript using the same generated-fixture semantics: an exact stage filter, name-only case-insensitive search, and stable multi-column sort. It is a local reference, not a universal ranking."
         >
           <div className="benchmark-actions">
             <Button disabled={running} onClick={runBrowserComparison}>
               {running ? "Running…" : "Run in this browser"}
             </Button>
-            <span>5 timed samples after warm-up · 1k, 10k, and 50k rows</span>
+            <span>5 timed samples after preparation and warm-up · 1k, 10k, and 50k rows</span>
           </div>
           {browserError ? (
             <Alert>
@@ -305,7 +309,7 @@ function BenchmarksPage() {
                 rows={browserResults}
               />
               <p className="benchmark-footnote">
-                A ratio below 1.00 means the tables query completed faster in this run; above 1.00 means the reference JavaScript completed faster. Re-run before drawing conclusions from small deltas.
+                The immutable row snapshot is prepared before timed samples, so this measures repeated query work rather than one-time Wasm materialization. A ratio below 1.00 means the tables query completed faster in this run; above 1.00 means the reference JavaScript completed faster.
               </p>
             </>
           ) : null}

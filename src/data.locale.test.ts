@@ -52,7 +52,7 @@ describe("locale-aware table text semantics", () => {
     expect(model.rows).toEqual([rows[0]]);
   });
 
-  it("reuses a single collator within each locale-aware table operation", () => {
+  it("reuses the cached collator across locale-aware table operations", () => {
     const OriginalCollator = Intl.Collator;
     const collatorConstructor = vi
       .spyOn(Intl, "Collator")
@@ -63,17 +63,16 @@ describe("locale-aware table text semantics", () => {
       id: index,
       name: `Row ${32 - index}`,
     }));
+    const locale = "de-DE-u-kn-true";
 
-    applyTableSort(rows, columns, [{ columnId: "name", direction: "asc" }], "en");
-    expect(collatorConstructor).toHaveBeenCalledTimes(1);
-
-    collatorConstructor.mockClear();
+    applyTableSort(rows, columns, [{ columnId: "name", direction: "asc" }], locale);
     applyTableFilter(
       rows,
       columns,
       { columnFilters: [{ columnId: "name", operator: "equals", value: "row 1" }] },
-      "en",
+      locale,
     );
+
     expect(collatorConstructor).toHaveBeenCalledTimes(1);
   });
 });
