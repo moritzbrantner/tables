@@ -31,6 +31,8 @@ The repository separates three kinds of evidence instead of collapsing them into
 - combined model filtering/sorting;
 - controlled table-state updates.
 
+It also records the same query used by the GitHub Pages quick comparison at 1,000, 10,000, and 50,000 rows, together with the matching plain-JavaScript reference. That workload uses the exact stage filter, name-only case-insensitive search, and stable region/value sort shown on the benchmark page, so optimization work on that path has durable CI evidence instead of relying on screenshots.
+
 The command performs one warm-up invocation followed by five timed samples per workload and records the median plus all samples. It writes `.artifacts/table-query-benchmark.json` with Bun, OS, architecture, CPU model, and CPU-count metadata.
 
 ### Browser/virtualization workloads
