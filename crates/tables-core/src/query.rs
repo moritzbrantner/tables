@@ -521,12 +521,12 @@ fn string_filter_matches(
             .is_some_and(|expected| actual.is_some_and(|value| value.starts_with(expected))),
         TableFilterOperator::EndsWith => prepared_single_string(expected)
             .is_some_and(|expected| actual.is_some_and(|value| value.ends_with(expected))),
-        TableFilterOperator::Equals => prepared_single_string(expected)
-            .is_some_and(|expected| actual == Some(expected)),
+        TableFilterOperator::Equals => {
+            prepared_single_string(expected).is_some_and(|expected| actual == Some(expected))
+        }
         TableFilterOperator::NotEquals => match &filter.value {
             TableFilterValue::None => actual.is_some(),
-            _ => prepared_single_string(expected)
-                .is_some_and(|expected| actual != Some(expected)),
+            _ => prepared_single_string(expected).is_some_and(|expected| actual != Some(expected)),
         },
         TableFilterOperator::In => match (&filter.value, expected) {
             (
