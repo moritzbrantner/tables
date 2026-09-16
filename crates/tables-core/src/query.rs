@@ -170,6 +170,34 @@ enum TableColumn {
     },
 }
 
+#[derive(Debug)]
+enum PreparedStringFilterValue {
+    None,
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+#[derive(Debug)]
+struct PreparedFilter<'a> {
+    column: Option<&'a TableColumn>,
+    filter: &'a TableFilter,
+    string_value: PreparedStringFilterValue,
+}
+
+#[derive(Debug)]
+struct PreparedSearch<'a> {
+    case_sensitive: bool,
+    columns: Vec<&'a TableColumn>,
+    needle: String,
+}
+
+#[derive(Debug)]
+struct PreparedQuery<'a> {
+    filters: Vec<PreparedFilter<'a>>,
+    search: Option<PreparedSearch<'a>>,
+    sort: Vec<(&'a TableColumn, TableSort)>,
+}
+
 impl TableIndex {
     /// Creates an empty index. Columns can be appended in adapter-defined order.
     #[must_use]
@@ -228,109 +256,167 @@ impl TableIndex {
             };
         }
 
+        let prepared = PreparedQuery::new(self, query);
         let mut rows = Vec::with_capacity(self.row_count);
         for row_index in 0..self.row_count {
-            if self.row_matches(query, row_index) {
+            if prepared.row_matches(row_index) {
                 rows.push(row_index as u32);
             }
         }
 
         let filtered_row_count = rows.len();
-        if !query.sort.is_empty() {
-            rows.sort_by(|left, right| self.compare_rows(*left, *right, &query.sort));
+        if !prepared.sort.is_empty() {
+            // Source index is the final tie-breaker, so the comparator itself is total and
+            // an unstable sort preserves the same deterministic stable-table semantics.
+            rows.sort_unstable_by(|left, right| prepared.compare_rows(*left, *right));
         }
 
         TableIndexResult {
             filtered_row_count,
-            row_indices: window_rows(&rows, query.row_offset, query.row_limit),
+            row_indices: window_rows(rows, query.row_offset, query.row_limit),
+        }
+    }
+}
+
+impl<'a> PreparedQuery<'a> {
+    fn new(index: &'a TableIndex, query: &'a TableQuery) -> Self {
+        let filters = query
+            .filters
+            .iter()
+            .map(|filter| PreparedFilter {
+                column: index.columns.get(filter.column_index),
+                filter,
+                string_value: PreparedStringFilterValue::new(filter),
+            })
+            .collect();
+        let search = query
+            .search
+            .as_ref()
+            .filter(|search| !search.query.is_empty())
+            .map(|search| PreparedSearch {
+                case_sensitive: search.case_sensitive,
+                columns: search
+                    .column_indices
+                    .iter()
+                    .filter_map(|column_index| index.columns.get(*column_index))
+                    .collect(),
+                needle: normalize_string(&search.query, search.case_sensitive),
+            });
+        let sort = query
+            .sort
+            .iter()
+            .filter_map(|rule| {
+                index
+                    .columns
+                    .get(rule.column_index)
+                    .map(|column| (column, *rule))
+            })
+            .collect();
+
+        Self {
+            filters,
+            search,
+            sort,
         }
     }
 
-    fn row_matches(&self, query: &TableQuery, row_index: usize) -> bool {
-        if !query
+    fn row_matches(&self, row_index: usize) -> bool {
+        if !self
             .filters
             .iter()
-            .all(|filter| self.filter_matches(filter, row_index))
+            .all(|filter| prepared_filter_matches(filter, row_index))
         {
             return false;
         }
 
-        let Some(search) = &query.search else {
+        let Some(search) = &self.search else {
             return true;
         };
-        if search.query.is_empty() {
-            return true;
-        }
 
-        let needle = normalize_string(&search.query, search.case_sensitive);
-        search.column_indices.iter().any(|column_index| {
-            self.search_value(*column_index, row_index, search.case_sensitive)
-                .is_some_and(|value| value.contains(&needle))
+        search.columns.iter().any(|column| {
+            search_column_matches(column, row_index, search.case_sensitive, &search.needle)
         })
     }
 
-    fn filter_matches(&self, filter: &TableFilter, row_index: usize) -> bool {
-        let Some(column) = self.columns.get(filter.column_index) else {
-            return false;
-        };
-
-        match column {
-            TableColumn::Numeric { values, validity } => {
-                numeric_filter_matches(values, validity, filter, row_index)
-            }
-            TableColumn::Boolean { values, validity } => {
-                boolean_filter_matches(values, validity, filter, row_index)
-            }
-            TableColumn::String {
-                values,
-                normalized_values,
-                validity,
-            } => string_filter_matches(values, normalized_values, validity, filter, row_index),
-        }
-    }
-
-    fn search_value(
-        &self,
-        column_index: usize,
-        row_index: usize,
-        case_sensitive: bool,
-    ) -> Option<String> {
-        match self.columns.get(column_index)? {
-            TableColumn::Numeric { values, validity } => {
-                numeric_value(values, validity, row_index).map(|value| value.to_string())
-            }
-            TableColumn::Boolean { values, validity } => {
-                boolean_value(values, validity, row_index).map(|value| value.to_string())
-            }
-            TableColumn::String {
-                values,
-                normalized_values,
-                validity,
-            } => string_value(
-                values,
-                normalized_values,
-                validity,
-                row_index,
-                case_sensitive,
-            )
-            .map(str::to_owned),
-        }
-    }
-
-    fn compare_rows(&self, left: u32, right: u32, sort: &[TableSort]) -> Ordering {
-        for rule in sort {
-            let ordering = self
-                .columns
-                .get(rule.column_index)
-                .map_or(Ordering::Equal, |column| {
-                    compare_column_rows(column, left, right, *rule)
-                });
+    fn compare_rows(&self, left: u32, right: u32) -> Ordering {
+        for (column, rule) in &self.sort {
+            let ordering = compare_column_rows(column, left, right, *rule);
             if ordering != Ordering::Equal {
                 return ordering;
             }
         }
 
         left.cmp(&right)
+    }
+}
+
+impl PreparedStringFilterValue {
+    fn new(filter: &TableFilter) -> Self {
+        match &filter.value {
+            TableFilterValue::String(value) => {
+                Self::Single(normalize_string(value, filter.case_sensitive))
+            }
+            TableFilterValue::Strings { values, .. } => Self::Multiple(
+                values
+                    .iter()
+                    .map(|value| normalize_string(value, filter.case_sensitive))
+                    .collect(),
+            ),
+            _ => Self::None,
+        }
+    }
+}
+
+fn prepared_filter_matches(filter: &PreparedFilter<'_>, row_index: usize) -> bool {
+    let Some(column) = filter.column else {
+        return false;
+    };
+
+    match column {
+        TableColumn::Numeric { values, validity } => {
+            numeric_filter_matches(values, validity, filter.filter, row_index)
+        }
+        TableColumn::Boolean { values, validity } => {
+            boolean_filter_matches(values, validity, filter.filter, row_index)
+        }
+        TableColumn::String {
+            values,
+            normalized_values,
+            validity,
+        } => string_filter_matches(
+            values,
+            normalized_values,
+            validity,
+            filter.filter,
+            &filter.string_value,
+            row_index,
+        ),
+    }
+}
+
+fn search_column_matches(
+    column: &TableColumn,
+    row_index: usize,
+    case_sensitive: bool,
+    needle: &str,
+) -> bool {
+    match column {
+        TableColumn::Numeric { values, validity } => numeric_value(values, validity, row_index)
+            .is_some_and(|value| value.to_string().contains(needle)),
+        TableColumn::Boolean { values, validity } => boolean_value(values, validity, row_index)
+            .is_some_and(|value| (if value { "true" } else { "false" }).contains(needle)),
+        TableColumn::String {
+            values,
+            normalized_values,
+            validity,
+        } => string_value(
+            values,
+            normalized_values,
+            validity,
+            row_index,
+            case_sensitive,
+        )
+        .is_some_and(|value| value.contains(needle)),
     }
 }
 
@@ -415,6 +501,7 @@ fn string_filter_matches(
     normalized_values: &[String],
     validity: &[u8],
     filter: &TableFilter,
+    expected: &PreparedStringFilterValue,
     row_index: usize,
 ) -> bool {
     let actual = string_value(
@@ -428,32 +515,37 @@ fn string_filter_matches(
     match filter.operator {
         TableFilterOperator::IsNull => actual.is_none(),
         TableFilterOperator::IsNotNull => actual.is_some(),
-        TableFilterOperator::Contains => string_expected(&filter.value, filter.case_sensitive)
-            .is_some_and(|expected| actual.is_some_and(|value| value.contains(&expected))),
-        TableFilterOperator::StartsWith => string_expected(&filter.value, filter.case_sensitive)
-            .is_some_and(|expected| actual.is_some_and(|value| value.starts_with(&expected))),
-        TableFilterOperator::EndsWith => string_expected(&filter.value, filter.case_sensitive)
-            .is_some_and(|expected| actual.is_some_and(|value| value.ends_with(&expected))),
-        TableFilterOperator::Equals => string_expected(&filter.value, filter.case_sensitive)
-            .is_some_and(|expected| actual == Some(expected.as_str())),
+        TableFilterOperator::Contains => prepared_single_string(expected)
+            .is_some_and(|expected| actual.is_some_and(|value| value.contains(expected))),
+        TableFilterOperator::StartsWith => prepared_single_string(expected)
+            .is_some_and(|expected| actual.is_some_and(|value| value.starts_with(expected))),
+        TableFilterOperator::EndsWith => prepared_single_string(expected)
+            .is_some_and(|expected| actual.is_some_and(|value| value.ends_with(expected))),
+        TableFilterOperator::Equals => {
+            prepared_single_string(expected).is_some_and(|expected| actual == Some(expected))
+        }
         TableFilterOperator::NotEquals => match &filter.value {
             TableFilterValue::None => actual.is_some(),
-            _ => string_expected(&filter.value, filter.case_sensitive)
-                .is_some_and(|expected| actual != Some(expected.as_str())),
+            _ => prepared_single_string(expected).is_some_and(|expected| actual != Some(expected)),
         },
-        TableFilterOperator::In => match &filter.value {
-            TableFilterValue::Strings {
-                values,
-                include_null,
-            } => match actual {
+        TableFilterOperator::In => match (&filter.value, expected) {
+            (
+                TableFilterValue::Strings { include_null, .. },
+                PreparedStringFilterValue::Multiple(values),
+            ) => match actual {
                 None => *include_null,
-                Some(actual) => values
-                    .iter()
-                    .any(|candidate| normalize_string(candidate, filter.case_sensitive) == actual),
+                Some(actual) => values.iter().any(|candidate| candidate.as_str() == actual),
             },
             _ => false,
         },
         _ => false,
+    }
+}
+
+fn prepared_single_string(value: &PreparedStringFilterValue) -> Option<&str> {
+    match value {
+        PreparedStringFilterValue::Single(value) => Some(value.as_str()),
+        _ => None,
     }
 }
 
@@ -502,13 +594,6 @@ fn compare_optional<T>(
 fn number_pair(actual: Option<f64>, expected: &TableFilterValue) -> Option<(f64, f64)> {
     match (actual, expected) {
         (Some(actual), TableFilterValue::Number(expected)) => Some((actual, *expected)),
-        _ => None,
-    }
-}
-
-fn string_expected(value: &TableFilterValue, case_sensitive: bool) -> Option<String> {
-    match value {
-        TableFilterValue::String(value) => Some(normalize_string(value, case_sensitive)),
         _ => None,
     }
 }
@@ -584,16 +669,20 @@ fn null_order(nulls: TableNulls) -> Ordering {
     }
 }
 
-fn window_rows(rows: &[u32], row_offset: usize, row_limit: Option<usize>) -> Vec<u32> {
+fn window_rows(mut rows: Vec<u32>, row_offset: usize, row_limit: Option<usize>) -> Vec<u32> {
     if row_offset >= rows.len() {
         return Vec::new();
     }
 
-    let remaining = &rows[row_offset..];
-    match row_limit {
-        Some(limit) => remaining.iter().take(limit).copied().collect(),
-        None => remaining.to_vec(),
+    if row_offset > 0 {
+        let remaining = rows.len() - row_offset;
+        rows.copy_within(row_offset.., 0);
+        rows.truncate(remaining);
     }
+    if let Some(limit) = row_limit {
+        rows.truncate(limit);
+    }
+    rows
 }
 
 #[cfg(test)]

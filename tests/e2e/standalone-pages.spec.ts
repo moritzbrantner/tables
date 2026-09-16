@@ -35,6 +35,11 @@ test("exposes variations and benchmark evidence from Pages navigation", async ({
   await page.goto("/benchmarks.html");
 
   await expect(page.getByRole("heading", { name: "Benchmarks" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Run in this browser" })).toBeVisible();
+  const runComparison = page.getByRole("button", { name: "Run in this browser" });
+  await expect(runComparison).toBeVisible();
   await expect(page.getByLabel("Comparable React table implementations")).toBeVisible();
+
+  await runComparison.click();
+  await expect(page.getByLabel("Same-browser query comparison")).toBeVisible();
+  await expect(page.getByText(/Rust\/Wasm query kernel could not be loaded/i)).toHaveCount(0);
 });

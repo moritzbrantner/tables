@@ -18,13 +18,17 @@
 
 ## Query boundary
 
-The TypeScript adapter evaluates JavaScript accessors once while constructing typed columns. Numeric/date and boolean columns cross as typed arrays; string-like values cross as stable strings. Rust then owns the built-in operation:
+The TypeScript adapter evaluates JavaScript accessors while preparing typed columns. Numeric/date and boolean columns cross as typed arrays; string-like values cross as stable strings. Rust then owns the built-in operation:
 
 1. structured filters are ANDed;
 2. optional global search is applied;
 3. multi-column sorting is stable;
 4. source row order resolves exact ties;
 5. source indices are returned to TypeScript.
+
+Prepared Rust indexes are keyed by immutable row-snapshot identity and column-schema identity. A column is materialized lazily the first time a filter, search, or sort actually needs it, then reused by later queries over the same snapshot. Custom sort-accessor output is cached on the same boundary. A replacement row snapshot therefore creates fresh Rust-owned query data; callers must not mutate row values in place and expect a prepared index to observe that mutation. Changing accessor semantics likewise requires a replacement columns array.
+
+The per-snapshot schema cache is bounded, and evicted indexes are explicitly freed. Identity queries bypass Wasm entirely instead of materializing columns just to return the original source order.
 
 Custom predicates remain in JavaScript because arbitrary callbacks cannot be moved into Rust without turning the Wasm boundary into per-row callback traffic. When a custom predicate is present, Rust still evaluates built-in structured/search candidates and TypeScript applies only that callback portion.
 

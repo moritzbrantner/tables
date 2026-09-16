@@ -3,6 +3,7 @@ import { arch, platform } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import type { TableDataColumn, TableFilter, TableSortState } from "../src/data";
 import {
   createVariableVirtualLayout,
   getFixedVirtualRange,
@@ -21,8 +22,17 @@ type Measurement = {
   samplesNsPerOperation: number[];
 };
 
+type QueryRow = {
+  id: number;
+  name: string;
+  region: string;
+  stage: string;
+  value: number;
+};
+
 const sampleCount = 7;
 const itemCount = 100_000;
+const queryRowCount = 50_000;
 const itemSizes = Array.from(
   { length: itemCount },
   (_, index) => 20 + ((index * 17) % 41),
@@ -33,6 +43,25 @@ const moduleUrl = pathToFileURL(
 const wasmKernel = createTableWasmKernelFromModule(await import(moduleUrl));
 const typescriptLayout = createVariableVirtualLayout(itemSizes);
 const wasmLayout = wasmKernel.createVariableLayout(itemSizes);
+const queryRows = createQueryRows(queryRowCount);
+const queryColumns: TableDataColumn<QueryRow>[] = [
+  { accessor: "id", id: "id", type: "number" },
+  { accessor: "name", id: "name", type: "string" },
+  { accessor: "region", id: "region", type: "string" },
+  { accessor: "stage", id: "stage", type: "string" },
+  { accessor: "value", id: "value", type: "number" },
+];
+const queryFilter: TableFilter<QueryRow> = {
+  columnFilters: [
+    { caseSensitive: true, columnId: "stage", operator: "equals", value: "Proposal" },
+  ],
+  query: "account",
+  queryColumnIds: ["name"],
+};
+const querySort: TableSortState = [
+  { columnId: "region", direction: "asc" },
+  { columnId: "value", direction: "desc" },
+];
 
 const variableOptions = (iteration: number) => ({
   overscan: 3,
@@ -47,6 +76,8 @@ const fixedOptions = (iteration: number) => ({
   scrollOffset: (iteration * 97) % 31_000_000,
   viewportSize: 768,
 });
+
+assertQueryParity();
 
 const measurements = [
   measure("fixed-typescript", 500_000, 10_000, (iteration) =>
@@ -73,6 +104,14 @@ const measurements = [
     layout.dispose();
     return totalSize;
   }),
+  measure("query-repeated-wasm-50k", 30, 3, () =>
+    wasmKernel.queryTable(queryRows, queryColumns, queryFilter, querySort).sourceIndices.length,
+  ),
+  measure("query-reference-js-50k", 30, 3, () => referenceQuery(queryRows).length),
+  measure("query-cold-materialization-wasm-50k", 2, 1, () => {
+    const freshColumns = queryColumns.map((column) => ({ ...column }));
+    return wasmKernel.queryTable(queryRows, freshColumns, queryFilter, querySort).sourceIndices.length;
+  }),
 ];
 
 const byLabel = new Map(measurements.map((measurement) => [measurement.label, measurement]));
@@ -81,7 +120,7 @@ const ratio = (numerator: string, denominator: string) =>
   readMeasurement(denominator).medianNsPerOperation;
 
 const evidence = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: new Date().toISOString(),
   runtime: {
     arch: arch(),
@@ -90,11 +129,20 @@ const evidence = {
   },
   workload: {
     fixedCount: 1_000_000,
+    queryRowCount,
     variableItemCount: itemCount,
     variableTotalSize: typescriptLayout.totalSize,
   },
   comparisons: {
     fixedWasmToTypescript: ratio("fixed-wasm", "fixed-typescript"),
+    queryColdMaterializationToRepeatedWasm: ratio(
+      "query-cold-materialization-wasm-50k",
+      "query-repeated-wasm-50k",
+    ),
+    queryRepeatedWasmToReferenceJs: ratio(
+      "query-repeated-wasm-50k",
+      "query-reference-js-50k",
+    ),
     variableOneShotToCachedTypescript: ratio(
       "variable-one-shot-typescript-100k",
       "variable-cached-typescript-100k",
@@ -119,7 +167,7 @@ await writeFile(
   `${JSON.stringify(evidence, null, 2)}\n`,
 );
 
-console.log("tables virtualization boundary benchmark; values are evidence, not thresholds");
+console.log("tables TypeScript/Wasm boundary benchmark; values are evidence, not thresholds");
 for (const measurement of measurements) {
   console.log(
     `${measurement.label}: median=${measurement.medianNsPerOperation.toFixed(2)} ns/op ` +
@@ -127,6 +175,39 @@ for (const measurement of measurements) {
   );
 }
 console.log("ratios:", JSON.stringify(evidence.comparisons));
+
+function assertQueryParity() {
+  const wasm = wasmKernel.queryTable(queryRows, queryColumns, queryFilter, querySort).sourceIndices;
+  const reference = referenceQuery(queryRows);
+  if (
+    wasm.length !== reference.length ||
+    wasm.some((sourceIndex, index) => queryRows[sourceIndex]?.id !== reference[index]?.id)
+  ) {
+    throw new Error("Wasm query benchmark does not match the plain-JavaScript reference");
+  }
+}
+
+function referenceQuery(rows: readonly QueryRow[]) {
+  const filteredRows = rows.filter(
+    (row) => row.stage === "Proposal" && row.name.toLowerCase().includes("account"),
+  );
+  return [...filteredRows].sort((left, right) => {
+    const region = left.region.localeCompare(right.region);
+    return region || right.value - left.value;
+  });
+}
+
+function createQueryRows(size: number): QueryRow[] {
+  const regions = ["Europe", "North America", "Asia Pacific", "Latin America"];
+  const stages = ["Discovery", "Proposal", "Review", "Closed"];
+  return Array.from({ length: size }, (_, index) => ({
+    id: index + 1,
+    name: `Account ${index % 2_000}`,
+    region: regions[index % regions.length] ?? "Europe",
+    stage: stages[(index * 7) % stages.length] ?? "Discovery",
+    value: (index * 7_919) % 100_000,
+  }));
+}
 
 function measure(
   label: string,
