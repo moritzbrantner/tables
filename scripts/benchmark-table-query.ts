@@ -28,6 +28,7 @@ type BenchmarkResult = {
 };
 
 const sizes = [1_000, 10_000, 100_000] as const;
+const quickComparisonSizes = [1_000, 10_000, 50_000] as const;
 const sampleCount = 5;
 const outputPath = getArgument("--output") ?? ".artifacts/table-query-benchmark.json";
 const columns: TableDataColumn<BenchmarkRow>[] = [
@@ -88,6 +89,30 @@ for (const size of sizes) {
   );
 }
 
+for (const size of quickComparisonSizes) {
+  const rows = createRows(size);
+  results.push(
+    measure(size, "quick-comparison-model", () =>
+      createTableModel({
+        columns,
+        filter: {
+          columnFilters: [
+            { caseSensitive: true, columnId: "stage", operator: "equals", value: "Proposal" },
+          ],
+          query: "account",
+          queryColumnIds: ["name"],
+        },
+        rows,
+        sort: [
+          { columnId: "region", direction: "asc" },
+          { columnId: "value", direction: "desc" },
+        ],
+      }).rows,
+    ),
+    measure(size, "quick-comparison-reference", () => referenceQuery(rows)),
+  );
+}
+
 const cpu = cpus()[0];
 const report = {
   environment: {
@@ -98,6 +123,7 @@ const report = {
     platform: process.platform,
   },
   methodology: {
+    quickComparisonSizes,
     sampleCount,
     sizes,
     timing: "median wall-clock duration after one warm-up invocation",
@@ -124,6 +150,16 @@ function measure(size: number, workload: string, operation: () => unknown): Benc
     size,
     workload,
   };
+}
+
+function referenceQuery(rows: readonly BenchmarkRow[]) {
+  const filteredRows = rows.filter(
+    (row) => row.stage === "Proposal" && row.name.toLowerCase().includes("account"),
+  );
+  return [...filteredRows].sort((left, right) => {
+    const region = left.region.localeCompare(right.region);
+    return region || right.value - left.value;
+  });
 }
 
 function createRows(size: number): BenchmarkRow[] {
