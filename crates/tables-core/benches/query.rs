@@ -27,9 +27,7 @@ fn main() {
     );
     let region = index.add_string_column(
         (0..ROW_COUNT)
-            .map(|row| {
-                ["Europe", "North America", "Asia Pacific", "Latin America"][row % 4].into()
-            })
+            .map(|row| ["Europe", "North America", "Asia Pacific", "Latin America"][row % 4].into())
             .collect(),
         vec![1; ROW_COUNT],
     );
@@ -71,7 +69,9 @@ fn main() {
     let expected_count = ROW_COUNT / 4;
     assert_eq!(index.query(&query).filtered_row_count, expected_count);
 
-    run("combined-query-50k", ITERATIONS, || index.query(black_box(&query)));
+    run("combined-query-50k", ITERATIONS, || {
+        index.query(black_box(&query))
+    });
 }
 
 fn run<T>(label: &str, iterations: usize, mut operation: impl FnMut() -> T) {
