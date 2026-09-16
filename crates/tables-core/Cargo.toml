@@ -11,5 +11,9 @@ publish = false
 path = "src/lib.rs"
 
 [[bench]]
+name = "query"
+harness = false
+
+[[bench]]
 name = "virtualization"
 harness = false
