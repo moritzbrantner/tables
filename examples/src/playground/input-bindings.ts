@@ -3,7 +3,7 @@ export const INPUT_BINDINGS_BUNDLE_URL =
 
 export type TablesExampleShortcutActions = {
   focusSearch: () => void;
-  toggleDensity: () => void;
+  navigateOverview: () => void;
 };
 
 const CONTEXT_ID = "tablesExample";
@@ -28,18 +28,18 @@ export const TABLES_EXAMPLE_SHORTCUT_REGISTRY = Object.freeze({
       provenance: { source: "tables/examples", version: "1" },
     },
     {
-      id: "tables.toggleDensity",
-      title: "Toggle table density",
-      categoryPath: ["Tables example", "View"],
+      id: "tables.navigateOverview",
+      title: "Go to pipeline overview",
+      categoryPath: ["Tables example", "Navigation"],
       repeatPolicy: "never",
       allowedDevices: ["keyboard"],
       defaults: [
         {
-          id: "tables.examples.toggleDensity.default",
-          action: "tables.toggleDensity",
+          id: "tables.examples.navigateOverview.default",
+          action: "tables.navigateOverview",
           sequence: [
             { key: { kind: "logical", value: "g" }, modifiers: {} },
-            { key: { kind: "logical", value: "d" }, modifiers: {} },
+            { key: { kind: "logical", value: "p" }, modifiers: {} },
           ],
           when: { op: "context", id: CONTEXT_ID },
           priority: 0,
@@ -66,7 +66,7 @@ export function attachTablesExampleShortcuts(actions: TablesExampleShortcutActio
         onDispatch: (dispatch: { action: string; phase: string }) => {
           if (dispatch.phase !== "press") return;
           if (dispatch.action === "tables.focusSearch") actions.focusSearch();
-          if (dispatch.action === "tables.toggleDensity") actions.toggleDensity();
+          if (dispatch.action === "tables.navigateOverview") actions.navigateOverview();
         },
       });
 
