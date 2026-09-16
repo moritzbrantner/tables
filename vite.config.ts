@@ -52,6 +52,10 @@ export default defineConfig({
         find: /^@moritzbrantner\/tables\/virtualization$/,
         replacement: path.resolve(rootDir, "src/virtualization.ts"),
       },
+      {
+        find: /^@moritzbrantner\/tables\/wasm$/,
+        replacement: path.resolve(rootDir, "src/wasm.ts"),
+      },
     ],
     dedupe: ["react", "react-dom"],
   },
