@@ -1,0 +1,333 @@
+diff --git a/.gitignore b/.gitignore
+index 5692c9b..52b538d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,6 +1,7 @@
+ coverage/
+ dist/
+ dist-examples/
++dist-browser-references/
+ .vite/
+ .artifacts/
+ node_modules/
+diff --git a/benchmarks/README.md b/benchmarks/README.md
+index f4e15ad..bcbe440 100644
+--- a/benchmarks/README.md
++++ b/benchmarks/README.md
+@@ -26,7 +26,7 @@ cargo bench --locked -p tables-core --bench query
+ 
+ The native suite writes `.artifacts/table-core-query-benchmark.json`: eight workloads at three sizes, seven timing samples, median, all samples, count, and order-sensitive checksum. Paging workloads also measure the same kernel with full materialization before slicing, alternating measurement order. This reference is explicitly not another table library.
+ 
+-The implementation uses direct identity windows, page-sized unsorted result buffers, rank selection followed by sorting only the requested interval, and query-local reusable numeric formatting scratch. Sorted pages still retain an O(N) candidate buffer. Native paging gains do not automatically mean that the public TypeScript table model is paginated; that model still exposes its full row result.
++The implementation uses direct identity windows, page-sized unsorted result buffers, rank selection followed by sorting only the requested interval, and query-local reusable numeric formatting scratch. Small edge windows now retain bounded candidate batches; middle/deep windows can still require O(N) space. Native paging gains do not automatically mean that the public TypeScript table model is paginated; that model still exposes its full row result.
+ 
+ ## Pinned TanStack comparison
+ 
+@@ -53,4 +53,4 @@ bun benchmarks/references/run.mjs --wasm --max-ratio 1.25
+ 
+ The number is an example, not the repository's default accepted budget. A threshold must be selected from retained evidence. Invalid thresholds fail immediately; exceeded thresholds write the report and exit nonzero. CI records ratios without this noisy timing gate and hard-gates all result parity and deterministic work limits instead. Never raise a ratchet simply to make a regression green.
+ 
+-The Rust Foundation workflow reuses its existing release Wasm build for this comparison and uploads both native and reference JSON reports. AG Grid Community and MUI X Data Grid Community browser adapters remain future work; this harness does not claim parity with those projects or universal browser performance parity.
++The Rust Foundation workflow reuses its existing release Wasm build for this comparison and uploads both native and reference JSON reports. AG Grid Community and MUI X Data Grid Community have a separate production-browser harness in `benchmarks/browser`; headless results alone do not claim browser performance parity.
+diff --git a/crates/tables-core/src/query.rs b/crates/tables-core/src/query.rs
+index b7813d0..8d00dfe 100644
+--- a/crates/tables-core/src/query.rs
++++ b/crates/tables-core/src/query.rs
+@@ -965,6 +965,47 @@ mod tests {
+         assert_eq!(result.row_indices, vec![1, 2]);
+     }
+ 
++    #[test]
++    fn constant_sort_keys_are_removed_without_collapsing_distinct_values() {
++        let mut index = TableIndex::new();
++        let group = index.add_string_column(vec!["same".into(); 6], vec![]);
++        let number =
++            index.add_numeric_column(vec![3.0, -0.0, 0.0, 2.0, 1.0, 0.0], vec![1, 1, 1, 1, 1, 0]);
++        let query = TableQuery {
++            sort: vec![
++                TableSort {
++                    column_index: group,
++                    direction: TableSortDirection::Asc,
++                    nulls: TableNulls::Last,
++                },
++                TableSort {
++                    column_index: number,
++                    direction: TableSortDirection::Asc,
++                    nulls: TableNulls::Last,
++                },
++            ],
++            ..TableQuery::default()
++        };
++        let mut prepared = PreparedQuery::new(&index, &query);
++        prepared.remove_constant_sort_columns(&[0, 1, 2, 3, 4, 5]);
++        assert_eq!(
++            prepared.sort.len(),
++            1,
++            "a constant string must not be compared during sorting"
++        );
++        assert_eq!(index.query(&query).row_indices, vec![1, 2, 4, 3, 0, 5]);
++        let mut signed_zero = PreparedQuery::new(&index, &query);
++        signed_zero.remove_constant_sort_columns(&[1, 2]);
++        assert_eq!(
++            signed_zero.sort.len(),
++            1,
++            "f64 total order distinguishes signed zeros"
++        );
++        let mut nulls = PreparedQuery::new(&index, &query);
++        nulls.remove_constant_sort_columns(&[2, 5]);
++        assert_eq!(nulls.sort.len(), 1, "null and zero are not equivalent");
++    }
++
+     fn assert_rows(index: &TableIndex, filter: TableFilter, expected: &[u32]) {
+         let result = index.query(&TableQuery {
+             filters: vec![filter],
+diff --git a/docs/performance.md b/docs/performance.md
+index 42cc30b..d474877 100644
+--- a/docs/performance.md
++++ b/docs/performance.md
+@@ -36,7 +36,7 @@ It also records the same query semantics used by the GitHub Pages quick comparis
+ 
+ The command performs one warm-up invocation followed by five timed samples per workload and records the median plus all samples. It writes `.artifacts/table-query-benchmark.json` with Bun, OS, architecture, CPU model, and CPU-count metadata.
+ 
+-`cargo bench --locked -p tables-core --bench query` separately covers eight native query workloads at 1,000, 10,000, and 100,000 rows. It writes `.artifacts/table-core-query-benchmark.json`, including seven samples per case and same-kernel full-materialization references for paged queries. Its reference is not another library. Native paging optimizations do not change the public TypeScript model's full-result API.
++`cargo bench --locked -p tables-core --bench query` separately covers eight native query workloads at 1,000, 10,000, and 100,000 rows. It writes `.artifacts/table-core-query-benchmark.json`, including seven samples per case and same-kernel full-materialization references for paged queries. Its reference is not another library. The full-result model is unchanged; the additive windowed model forwards limits into Rust.
+ 
+ ### Browser/virtualization workloads
+ 
+@@ -67,7 +67,7 @@ The report records both the repeated-Wasm/reference ratio and the cold-materiali
+ 
+ `benchmarks/references/run.mjs` compares the public table model, both TypeScript and release Rust/Wasm, with pinned TanStack Table core. It records cold snapshots separately from changed-query workloads, rotates measurement order, checks every result's complete row order, and retains environment/version/snapshot evidence in `.artifacts/table-reference-benchmark.json`. The workflow reuses its existing release Wasm build. See the [commands, methodology, limitations, and optional relative gate](../benchmarks/README.md).
+ 
+-This is headless query evidence, not a DOM benchmark. AG Grid and MUI X browser comparison adapters are not yet implemented.
++This is headless query evidence, not a DOM benchmark. Pinned AG Grid and MUI X production browser adapters are described below.
+ 
+ ## Comparing runs
+ 
+@@ -86,3 +86,66 @@ The normal Rust tests enforce constant search allocation counts, page-sized unso
+ ## What the benchmarks do not guarantee
+ 
+ The committed scripts and uploaded artifacts are reproducibility evidence, not a claim that 100,000-row client-side processing is appropriate for every application. Row shapes, custom cell rendering, browser versions, hardware, locale-aware comparison, and application state can materially change costs. Remote datasets should still prefer manual/server mode when query work belongs on the backend.
++
++## Windowed public queries
++
++`createTableWindowModel({ rows, columns, filter, sort, window: { offset, limit } })`
++returns only the requested result window. `filteredRowCount` and `sortedRowCount`
++continue to describe all matches; `rowIndexOffset` is the clamped global position.
++The default full-result `createTableModel` API is unchanged. Offsets and limits
++must be non-negative safe integers; a zero limit is a count-only query.
++
++The built-in Wasm adapter passes the window into Rust and only transfers/maps
++those source indices back to JavaScript. Older custom kernels, explicit locales,
++and active JS predicates retain the existing full-model semantics before slicing.
++That compatibility path does not claim bounded query memory. Treat row snapshots
++and schema definitions as immutable, just as for the full Wasm model.
++
++For small leading sorted pages, Rust retains at most twice `offset + limit`
++candidates. Near the end it counts first and can retain the smaller suffix.
++Middle/deep windows still have an O(N) worst case, and exact filtered counts still
++require visiting matching candidates. No incorrect claim of O(page size) memory
++for arbitrary offsets is made. Ratchets enforce a 4 KiB requested-allocation
++budget for 32-row edge windows at 1k, 10k and 100k source rows.
++
++`bun run benchmark:windows` compares the public window path with the full public
++model followed by slicing, on the same prepared snapshot and in alternating order.
++It writes `.artifacts/table-window-query-benchmark.json`. Build the node release
++Wasm artifact first; the existing CI Wasm lane reuses that build.
++
++The `/windowed.html` example exercises this API directly, including URL-backed
++query/sort/offset state, full match counts, and global ARIA row positions.
++
++## Production browser references
++
++The separate `/references/` page runs actual pinned AG Grid Community 36.2.0 and
++MUI X Data Grid Community 9.14.0 React components against `VirtualTable` with the
++windowed model. Its dependencies live in `benchmarks/browser`; they are not part
++of the published table package or the normal examples' JavaScript bundle.
++
++Two scopes remain separate: client query plus rendering, and supplied-window
++rendering with query work outside every provider's timer. All use 100-row pages,
++32-pixel row height, and a 400-pixel grid viewport. MUI Community's 100-row page
++limit means this is not a continuous 100k-row scrolling comparison. Mount samples
++use fresh snapshot identities; changed queries establish the opposite state
++outside timing and then measure a real state change. Provider order rotates.
++
++Every invocation validates the complete ordered page, matching count, first
++rendered row, and bounded mounted row count. Reports retain all samples, exact
++provider pins, browser/CPU information and source identity. Two animation frames
++are included in latency; sub-frame timing differences are not pure query costs.
++Richer provider metadata and feature/styling differences remain relevant.
++
++```sh
++npm ci --prefix benchmarks/browser --ignore-scripts --no-audit --no-fund
++bun run build:wasm
++bun run build:references
++bunx playwright install chromium
++bun run benchmark:references:browser
++```
++
++Normal Pages PR validation runs the 1k-row adapter smoke matrix; main, manual,
++and `performance`-labelled PR runs execute all 1k/10k/100k cases. Both use the
++production build at its real `/tables/references/` path. Timings are descriptive
++unless an explicit controlled-run `--max-ratio` threshold is supplied; parity and
++DOM work limits always fail closed.
+diff --git a/examples/src/benchmarks-main.tsx b/examples/src/benchmarks-main.tsx
+index 086b777..d6f14db 100644
+--- a/examples/src/benchmarks-main.tsx
++++ b/examples/src/benchmarks-main.tsx
+@@ -156,21 +156,21 @@ const comparisonTargets: ComparisonTarget[] = [
+   },
+   {
+     approach: "Headless table state and row models",
+-    benchmarkStatus: "Pinned harness not added yet",
++    benchmarkStatus: "Pinned headless query harness: 8.21.3",
+     library: "TanStack Table",
+     url: "https://tanstack.com/table/latest/docs/overview",
+     virtualization: "Composed with a virtualization library such as TanStack Virtual",
+   },
+   {
+     approach: "Integrated React data grid",
+-    benchmarkStatus: "Pinned harness not added yet",
++    benchmarkStatus: "Pinned production browser harness: 36.2.0",
+     library: "AG Grid Community",
+     url: "https://www.ag-grid.com/react-data-grid/getting-started/",
+     virtualization: "Built-in row and column DOM virtualization",
+   },
+   {
+     approach: "Integrated Material UI data grid",
+-    benchmarkStatus: "Pinned harness not added yet",
++    benchmarkStatus: "Pinned production browser harness: 9.14.0",
+     library: "MUI X Data Grid Community",
+     url: "https://mui.com/x/react-data-grid/",
+     virtualization: "Built-in row and column virtualization",
+@@ -289,6 +289,8 @@ function BenchmarksPage() {
+           description="This compares the production Rust/Wasm-backed table query model with plain JavaScript using the same generated-fixture semantics: an exact stage filter, name-only case-insensitive search, and stable multi-column sort. It is a local reference, not a universal ranking."
+         >
+           <div className="benchmark-actions">
++            <a href="./references/">Compare AG Grid and MUI X in this browser</a>
++            <a href="./windowed.html">Try windowed queries</a>
+             <Button disabled={running} onClick={runBrowserComparison}>
+               {running ? "Running…" : "Run in this browser"}
+             </Button>
+diff --git a/examples/src/playground/model.ts b/examples/src/playground/model.ts
+index 0fab27a..c5f069c 100644
+--- a/examples/src/playground/model.ts
++++ b/examples/src/playground/model.ts
+@@ -1,4 +1,4 @@
+-export type ExamplePage = "benchmarks" | "dense" | "examples" | "states" | "variations" | "wide";
++export type ExamplePage = "benchmarks" | "dense" | "examples" | "states" | "variations" | "wide" | "windowed";
+ 
+ export type TableDensity = "comfortable" | "compact";
+ 
+@@ -54,5 +54,6 @@ export const exampleLinks = [
+   { id: "dense", href: "./dense.html", label: "Dense data" },
+   { id: "wide", href: "./wide.html", label: "Wide table" },
+   { id: "states", href: "./states.html", label: "States" },
++  { id: "windowed", href: "./windowed.html", label: "Windowed queries" },
+   { id: "benchmarks", href: "./benchmarks.html", label: "Benchmarks" },
+ ] satisfies Array<{ id: ExamplePage; href: string; label: string }>;
+diff --git a/package.json b/package.json
+index bf74301..8bce4f7 100644
+--- a/package.json
++++ b/package.json
+@@ -122,6 +122,9 @@
+     "test:wasm-parity": "bun run build:wasm:node && TABLES_WASM_PARITY=1 vitest run src/wasm-parity.test.ts",
+     "verify": "bun run verify:fast && bun run build:wasm && bun run test:wasm-parity && bun run build && bun run pack:check && bun run verify:browser",
+     "verify:browser": "bun run build:examples && bun run test:e2e",
+-    "verify:fast": "bun run lint && bun run check-types && bun run test"
++    "verify:fast": "bun run lint && bun run check-types && bun run test",
++    "build:references": "tsc -p benchmarks/browser --noEmit && vite build --config benchmarks/browser/vite.config.ts",
++    "benchmark:references:browser": "node benchmarks/browser/run.mjs",
++    "benchmark:windows": "bun scripts/benchmark-query-windows.ts"
+   }
+ }
+diff --git a/scripts/smoke-pages.mjs b/scripts/smoke-pages.mjs
+index ba14e4d..05619d0 100644
+--- a/scripts/smoke-pages.mjs
++++ b/scripts/smoke-pages.mjs
+@@ -23,6 +23,7 @@ const server = createServer(async (request, response) => {
+ await new Promise((ready) => server.listen(0, "127.0.0.1", ready));
+ let browser;
+ let page;
++await mkdir(".artifacts", { recursive: true });
+ try {
+   browser = await chromium.launch();
+   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+@@ -38,10 +39,20 @@ try {
+   await expect(page.getByText(/Rust\/Wasm query kernel could not be loaded/i)).toHaveCount(0);
+   assert.deepEqual(errors, [], "Production Pages must not raise browser errors");
+   assert.ok(wasmResponses.includes(200), "The built Pages site must actually load its Wasm binary");
+-  console.log("Production /tables/ benchmark loaded Wasm and returned comparison results.");
++  await page.screenshot({ path: ".artifacts/pages-smoke.png", fullPage: true });
++  await page.goto(`http://127.0.0.1:${server.address().port}/tables/windowed.html?offset=100&sort=asc`);
++  await expect(page.getByRole("status")).toContainText("Rust/Wasm · bounded query result");
++  await expect(page.getByTestId("window-count")).toHaveText("100 returned · 100,000 matching · offset 100");
++  await page.getByRole("button", { name: "Next page" }).click();
++  await expect(page).toHaveURL(/offset=200/);
++  await page.getByRole("textbox", { name: "Search accounts" }).fill("Account 17");
++  await expect(page.getByTestId("window-count")).toHaveText("100 returned · 5,550 matching · offset 0");
++  await page.screenshot({ path: ".artifacts/windowed-queries.png", fullPage: true });
++  assert.deepEqual(errors, [], "The windowed production page must not raise browser errors");
++  console.log("Production /tables/ loaded Wasm, benchmarked, and exercised windowed queries.");
+ } finally {
+   await mkdir(".artifacts", { recursive: true });
+-  if (page) await page.screenshot({ path: ".artifacts/pages-smoke.png", fullPage: true });
++  if (page) await page.screenshot({ path: ".artifacts/pages-final-state.png", fullPage: true });
+   await browser?.close();
+   await new Promise((done) => server.close(done));
+ }
+diff --git a/src/wasm-parity.test.ts b/src/wasm-parity.test.ts
+index d74e536..805f660 100644
+--- a/src/wasm-parity.test.ts
++++ b/src/wasm-parity.test.ts
+@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, test } from "vitest";
+ 
+ import {
+   createTableModel,
++  createTableWindowModel,
+   type TableDataColumn,
+   type TableFilter,
+   type TableSortState,
+@@ -194,4 +195,31 @@ describe.runIf(enabled)("tables Wasm parity", () => {
+ 
+     expect(actual.sourceIndices).toEqual(expected.rows.map((row) => rows.indexOf(row)));
+   });
++  test("windowed public models preserve order/counts across sparse matches and extreme windows", () => {
++    const rows = Array.from({ length: 513 }, (_, id) => ({ id, label: `Account ${id % 17}`, score: id % 13 === 0 ? null : (id * 7919) % 37 }));
++    const columns: TableDataColumn<(typeof rows)[number]>[] = [
++      { id: "id", accessor: "id", type: "number" },
++      { id: "label", accessor: "label", type: "string" },
++      { id: "score", accessor: "score", type: "number" },
++    ];
++    for (const query of ["", "account 1", "missing"]) {
++      for (const direction of ["asc", "desc"] as const) {
++        const options = { rows, columns, filter: { query, queryColumnIds: ["label"] }, sort: [{ columnId: "score", direction }] };
++        setTableQueryKernel(null);
++        const expected = createTableModel(options);
++        setTableQueryKernel(kernel);
++        for (const offset of [0, 1, 100, 450, 500, 513, Number.MAX_SAFE_INTEGER]) {
++          for (const limit of [0, 1, 32, 100, Number.MAX_SAFE_INTEGER]) {
++            const page = createTableWindowModel({ ...options, window: { offset, limit } });
++            expect(page.rows).toEqual(expected.rows.slice(offset, offset + Math.min(limit, expected.rows.length)));
++            expect(page.filteredRowCount).toBe(expected.filteredRowCount);
++            expect(page.sortedRowCount).toBe(expected.sortedRowCount);
++            expect(page.rowIndexOffset).toBe(Math.min(offset, expected.filteredRowCount));
++          }
++        }
++      }
++    }
++    setTableQueryKernel(null);
++  });
++
+ });
+diff --git a/vite.config.ts b/vite.config.ts
+index f1f2002..7302440 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -47,6 +47,7 @@ export default defineConfig({
+         states: path.resolve(examplesDir, "states.html"),
+         variations: path.resolve(examplesDir, "variations.html"),
+         wide: path.resolve(examplesDir, "wide.html"),
++        windowed: path.resolve(examplesDir, "windowed.html"),
+       },
+     },
+   },
