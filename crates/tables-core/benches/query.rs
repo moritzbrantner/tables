@@ -156,9 +156,14 @@ fn main() {
         "{{\"version\":1,\"suite\":\"tables-core-query-v1\",\"arch\":\"{}\",\"os\":\"{}\",\"sampleCount\":{SAMPLES},\"reference\":\"same kernel, full filter/sort then materialized page; not another library\",\"results\":[{}]}}",
         std::env::consts::ARCH, std::env::consts::OS, results.join(","),
     ).unwrap();
-    let output = std::env::var("TABLES_QUERY_BENCH_OUTPUT")
-        .unwrap_or_else(|_| ".artifacts/table-core-query-benchmark.json".into());
-    let path = std::path::Path::new(&output);
+    // Cargo runs benches from the crate directory, not the workspace root.
+    let output = std::env::var_os("TABLES_QUERY_BENCH_OUTPUT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../.artifacts/table-core-query-benchmark.json")
+        });
+    let path = output.as_path();
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())

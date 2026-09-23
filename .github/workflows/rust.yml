@@ -156,7 +156,10 @@ jobs:
       - name: Compare query APIs against TanStack
         env:
           TABLES_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: bun benchmarks/references/run.mjs --wasm
+        run: |
+          node --test benchmarks/references/contract.test.mjs
+          bun benchmarks/references/run.mjs --wasm
+          test -s .artifacts/table-reference-benchmark.json
 
       - name: Upload boundary benchmark evidence
         if: always()
@@ -197,6 +200,7 @@ jobs:
         run: |
           set -o pipefail
           cargo bench --locked --workspace 2>&1 | tee rust-benchmarks.txt
+          test -s .artifacts/table-core-query-benchmark.json
 
       - name: Measure table query workloads
         run: bun run benchmark:query

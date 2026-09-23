@@ -31,7 +31,7 @@ describe("query work ratchets", () => {
     const nativeLower = String.prototype.toLocaleLowerCase;
     vi.spyOn(String.prototype, "toLocaleLowerCase").mockImplementation(function (
       this: string,
-      locales?: string | string[],
+      locales?: Parameters<typeof nativeLower>[0],
     ) {
       return nativeLower.call(this, locales ?? "tr");
     });
@@ -43,7 +43,7 @@ describe("query work ratchets", () => {
 
   it("preserves Unicode context and explicit locale semantics", () => {
     setTableQueryKernel(null);
-    const rows = ["Account 17", "I", "İ", "Σ", "ΟΣ", "I\u0301", "J\u0301", "A", "ẞ", "" ]
+    const rows = ["Account 17", "I", "İ", "Σ", "ΟΣ", "I\u0301", "J\u0301", "A", "ẞ", ""]
       .map((text) => ({ text }));
     const columns: TableDataColumn<(typeof rows)[number]>[] = [{ id: "text", accessor: "text" }];
     for (const locale of [undefined, "tr", "az", "lt", "de", "el", ["tr", "en"]]) {

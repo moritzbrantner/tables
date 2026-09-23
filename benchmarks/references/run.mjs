@@ -12,6 +12,8 @@ import { createTableModel } from "../../src/data.ts";
 import { setTableQueryKernel } from "../../src/query-kernel.ts";
 import { createTableWasmKernelFromModule } from "../../src/wasm-internal.ts";
 
+import { findViolations, parseArguments } from "./contract.mjs";
+
 const require = createRequire(import.meta.url);
 const { createTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel } =
   require("@tanstack/table-core");
@@ -20,13 +22,7 @@ const pinnedVersion = require("./package.json").dependencies["@tanstack/table-co
 assert.equal(referenceVersion, pinnedVersion, "Reference version must match the exact pin");
 const sampleCount = 7;
 const sizes = [1_000, 10_000, 100_000];
-const output = argument("--output") ?? ".artifacts/table-reference-benchmark.json";
-const ratioArgument = argument("--max-ratio");
-const maxRatio = ratioArgument === undefined ? null : Number(ratioArgument);
-if (maxRatio !== null && (!Number.isFinite(maxRatio) || maxRatio <= 0)) {
-  throw new Error("--max-ratio requires a positive finite number");
-}
-const useWasm = process.argv.includes("--wasm");
+const { output, maxRatio, useWasm } = parseArguments(process.argv.slice(2));
 const wasmPath = "../../.artifacts/tables-wasm-node-release/tables_wasm.js";
 const wasm = useWasm ? createTableWasmKernelFromModule(require(wasmPath)) : null;
 const wasmSha256 = useWasm ? createHash("sha256").update(
@@ -135,9 +131,7 @@ try {
   setTableQueryKernel(null);
 }
 
-const violations = maxRatio === null ? [] : results.filter(
-  (result) => result.provider !== "tanstack" && result.ratio > maxRatio,
-);
+const violations = findViolations(results, providers, maxRatio);
 const report = {
   version: 1, suite: "table-reference-query-v1", createdAt: new Date().toISOString(),
   checkoutSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
@@ -191,12 +185,4 @@ function oracle(rows, query) {
 
 function median(samples) {
   return [...samples].sort((left, right) => left - right)[Math.floor(samples.length / 2)];
-}
-
-function argument(name) {
-  const index = process.argv.indexOf(name);
-  if (index < 0) return undefined;
-  const value = process.argv[index + 1];
-  if (!value || value.startsWith("--")) throw new Error(`${name} requires a value`);
-  return value;
 }
