@@ -1,12 +1,38 @@
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 const rootDir = fileURLToPath(new URL("./", import.meta.url));
 const examplesDir = path.resolve(rootDir, "examples");
+
+// The library loads an ES module whose own relative URL loads the Wasm binary.
+// Copy both together: treating only the JS loader as a hashed Vite asset breaks
+// its sibling lookup. The first library candidate is relative to assets/*.js.
+function browserWasmAssets(): Plugin {
+  let outDir = "";
+  return {
+    name: "tables-browser-wasm-assets",
+    apply: "build",
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      const target = path.join(outDir, "assets/wasm");
+      mkdirSync(target, { recursive: true });
+      for (const name of ["tables_wasm.js", "tables_wasm_bg.wasm"]) {
+        const source = path.join(rootDir, "src/wasm/generated", name);
+        if (!existsSync(source)) {
+          throw new Error("Build the browser query kernel with bun run build:wasm before building examples.");
+        }
+        copyFileSync(source, path.join(target, name));
+      }
+    },
+  };
+}
 
 export default defineConfig({
   base: process.env.BASE_PATH ?? "/",
@@ -24,7 +50,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), browserWasmAssets()],
   root: examplesDir,
   resolve: {
     alias: [
