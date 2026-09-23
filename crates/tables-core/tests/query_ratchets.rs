@@ -71,7 +71,9 @@ fn measure<T>(operation: impl FnOnce() -> T) -> (T, Allocations) {
     COUNTERS.set(Some(Allocations::default()));
     let reset = Reset;
     let result = black_box(operation());
-    let counters = COUNTERS.replace(None).expect("allocation measurement is enabled");
+    let counters = COUNTERS
+        .replace(None)
+        .expect("allocation measurement is enabled");
     drop(reset);
     (result, counters)
 }
@@ -81,7 +83,9 @@ fn fixture(size: usize) -> TableIndex {
     index.add_numeric_column((0..size).map(|row| row as f64).collect(), vec![]);
     index.add_boolean_column((0..size).map(|row| (row % 2) as u8).collect(), vec![]);
     index.add_string_column(
-        (0..size).map(|row| format!("Account {}", row % 2_000)).collect(),
+        (0..size)
+            .map(|row| format!("Account {}", row % 2_000))
+            .collect(),
         vec![],
     );
     index
@@ -148,7 +152,11 @@ fn membership_preparation_and_sort_do_not_reintroduce_row_allocations() {
             column_index: 2,
             operator: TableFilterOperator::In,
             value: TableFilterValue::Strings {
-                values: vec!["ACCOUNT 1".into(), "account 17".into(), "Account 200".into()],
+                values: vec![
+                    "ACCOUNT 1".into(),
+                    "account 17".into(),
+                    "Account 200".into(),
+                ],
                 include_null: false,
             },
             case_sensitive: false,
@@ -177,33 +185,65 @@ fn every_window_matches_the_full_stable_order() {
     let validity = (0..size).map(|row| u8::from(row % 11 != 0)).collect();
     index.add_numeric_column(values, validity);
     index.add_boolean_column((0..size).map(|row| (row % 3 != 0) as u8).collect(), vec![]);
-    let rule = |direction, nulls| TableSort { column_index: 0, direction, nulls };
+    let rule = |direction, nulls| TableSort {
+        column_index: 0,
+        direction,
+        nulls,
+    };
     for sort in [
         vec![],
         vec![rule(TableSortDirection::Asc, TableNulls::Last)],
         vec![rule(TableSortDirection::Desc, TableNulls::First)],
         vec![
-            TableSort { column_index: 99, ..rule(TableSortDirection::Asc, TableNulls::Last) },
-            TableSort { column_index: 1, ..rule(TableSortDirection::Desc, TableNulls::Last) },
+            TableSort {
+                column_index: 99,
+                ..rule(TableSortDirection::Asc, TableNulls::Last)
+            },
+            TableSort {
+                column_index: 1,
+                ..rule(TableSortDirection::Desc, TableNulls::Last)
+            },
             rule(TableSortDirection::Asc, TableNulls::First),
         ],
     ] {
-        for filters in [vec![], vec![TableFilter {
-            column_index: 1,
-            operator: TableFilterOperator::Equals,
-            value: TableFilterValue::Boolean(true),
-            case_sensitive: true,
-        }]] {
-            let mut query = TableQuery { sort: sort.clone(), filters, ..TableQuery::default() };
+        for filters in [
+            vec![],
+            vec![TableFilter {
+                column_index: 1,
+                operator: TableFilterOperator::Equals,
+                value: TableFilterValue::Boolean(true),
+                case_sensitive: true,
+            }],
+        ] {
+            let mut query = TableQuery {
+                sort: sort.clone(),
+                filters,
+                ..TableQuery::default()
+            };
             let full = index.query(&query);
             for offset in [0, 1, 7, size / 2, size - 1, size, size + 1, usize::MAX] {
-                for limit in [None, Some(0), Some(1), Some(5), Some(size), Some(usize::MAX)] {
+                for limit in [
+                    None,
+                    Some(0),
+                    Some(1),
+                    Some(5),
+                    Some(size),
+                    Some(usize::MAX),
+                ] {
                     query.row_offset = offset;
                     query.row_limit = limit;
                     let actual = index.query(&query);
-                    let expected: Vec<_> = full.row_indices.iter().copied()
-                        .skip(offset).take(limit.unwrap_or(usize::MAX)).collect();
-                    assert_eq!(actual.row_indices, expected, "offset={offset} limit={limit:?}");
+                    let expected: Vec<_> = full
+                        .row_indices
+                        .iter()
+                        .copied()
+                        .skip(offset)
+                        .take(limit.unwrap_or(usize::MAX))
+                        .collect();
+                    assert_eq!(
+                        actual.row_indices, expected,
+                        "offset={offset} limit={limit:?}"
+                    );
                     assert_eq!(actual.filtered_row_count, full.filtered_row_count);
                 }
             }
@@ -214,21 +254,38 @@ fn every_window_matches_the_full_stable_order() {
 #[test]
 fn numeric_search_preserves_display_for_extremes_and_nulls() {
     let values = vec![
-        0.0, -0.0, 1.25, -17.5, f64::MAX, f64::MIN_POSITIVE,
-        f64::from_bits(1), f64::NAN, f64::INFINITY, 17.0,
+        0.0,
+        -0.0,
+        1.25,
+        -17.5,
+        f64::MAX,
+        f64::MIN_POSITIVE,
+        f64::from_bits(1),
+        f64::NAN,
+        f64::INFINITY,
+        17.0,
     ];
     let validity = vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 0];
     let mut index = TableIndex::new();
     index.add_numeric_column(values.clone(), validity.clone());
-    for needle in ["0", "17", "-", ".", "e", "E", "+", "account", "NaN", "inf", "ä"] {
+    for needle in [
+        "0", "17", "-", ".", "e", "E", "+", "account", "NaN", "inf", "ä",
+    ] {
         for case_sensitive in [false, true] {
             let mut query = search(needle, vec![0, 99]);
             query.search.as_mut().unwrap().case_sensitive = case_sensitive;
-            let normalized = if case_sensitive { needle.into() } else { needle.to_lowercase() };
-            let expected: Vec<_> = values.iter().enumerate()
+            let normalized = if case_sensitive {
+                needle.into()
+            } else {
+                needle.to_lowercase()
+            };
+            let expected: Vec<_> = values
+                .iter()
+                .enumerate()
                 .filter(|(row, value)| validity[*row] != 0 && value.is_finite())
                 .filter(|(_, value)| value.to_string().contains(&normalized))
-                .map(|(row, _)| row as u32).collect();
+                .map(|(row, _)| row as u32)
+                .collect();
             assert_eq!(index.query(&query).row_indices, expected, "needle={needle}");
         }
     }
