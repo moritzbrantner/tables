@@ -6,6 +6,7 @@ on:
       - ".github/workflows/rust.yml"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "benchmarks/**"
       - "bun.lock"
       - "crates/**"
       - "docs/performance.md"
@@ -31,6 +32,7 @@ on:
       - ".github/workflows/rust.yml"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "benchmarks/**"
       - "bun.lock"
       - "crates/**"
       - "docs/performance.md"
@@ -81,7 +83,7 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
       - name: Test
-        run: cargo test --locked --workspace --all-features
+        run: cargo test --locked --workspace --all-features -- --show-output
 
       - name: Check documentation
         env:
@@ -148,11 +150,25 @@ jobs:
       - name: Measure TypeScript/Wasm boundary
         run: bun run benchmark:virtualization
 
+      - name: Install isolated pinned query reference
+        run: npm ci --prefix benchmarks/references --ignore-scripts --no-audit --no-fund
+
+      - name: Compare query APIs against TanStack
+        env:
+          TABLES_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node --test benchmarks/references/contract.test.mjs
+          bun benchmarks/references/run.mjs --wasm
+          test -s .artifacts/table-reference-benchmark.json
+
       - name: Upload boundary benchmark evidence
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: virtualization-boundary-${{ github.sha }}
-          path: .artifacts/virtualization-boundary-benchmark.json
+          path: |
+            .artifacts/virtualization-boundary-benchmark.json
+            .artifacts/table-reference-benchmark.json
           if-no-files-found: error
           retention-days: 14
 
@@ -181,7 +197,10 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Run descriptive Rust benchmarks
-        run: cargo bench --locked --workspace 2>&1 | tee rust-benchmarks.txt
+        run: |
+          set -o pipefail
+          cargo bench --locked --workspace 2>&1 | tee rust-benchmarks.txt
+          test -s .artifacts/table-core-query-benchmark.json
 
       - name: Measure table query workloads
         run: bun run benchmark:query
@@ -195,6 +214,7 @@ jobs:
           name: table-benchmarks-${{ github.sha }}
           path: |
             rust-benchmarks.txt
+            .artifacts/table-core-query-benchmark.json
             .artifacts/table-query-benchmark.json
             .artifacts/table-browser-benchmark.json
           if-no-files-found: error

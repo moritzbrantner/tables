@@ -11,7 +11,8 @@
       "@moritzbrantner/tables/data": ["./src/data.ts"],
       "@moritzbrantner/tables/react": ["./src/react-rust.tsx"],
       "@moritzbrantner/tables/view-state": ["./src/view-state.ts"],
-      "@moritzbrantner/tables/virtualization": ["./src/virtualization.ts"]
+      "@moritzbrantner/tables/virtualization": ["./src/virtualization.ts"],
+      "@moritzbrantner/tables/wasm": ["./src/wasm.ts"]
     },
     "skipLibCheck": true,
     "strict": true,

@@ -110,6 +110,15 @@ export type TableModel<TRow> = {
   totalRowCount: number;
 };
 
+const MAX_COLLATION_CACHE_ENTRIES = 512;
+const MAX_LOCALE_COLLATOR_CACHE_ENTRIES = 16;
+const defaultTableCollator = createTableCollator(undefined);
+const tableCollatorsByLocale = new Map<string, Intl.Collator>();
+const collationCacheByCollator = new WeakMap<
+  Intl.Collator,
+  { entries: Map<string, Map<string, number>>; size: number }
+>();
+
 export function createTableModel<TRow>({
   columns,
   filter,
@@ -271,7 +280,7 @@ export function compareTableValues(
     return Number(leftValue) - Number(rightValue);
   }
 
-  return getTableCollator(locale).compare(String(leftValue), String(rightValue));
+  return compareCollatedStrings(getTableCollator(locale), String(leftValue), String(rightValue));
 }
 
 export function createDefaultTableState<TRow>(
@@ -341,7 +350,7 @@ function applyTableFilterTypeScript<TRow>(
   const structuredFilters = filter.columnFilters ?? [];
   const searchColumns = getFilterColumns(columns, filter.queryColumnIds);
   const collator = getTableCollator(locale);
-  const normalizedQuery = query.toLocaleLowerCase(normalizeLocaleInput(locale));
+  const normalizedQuery = normalizeCaseInsensitiveText(query, locale);
   const resolvedFilters = structuredFilters.map((columnFilter) => ({
     column: columns.find((candidate) => candidate.id === columnFilter.columnId),
     columnFilter,
@@ -538,9 +547,15 @@ function filterValuesEqual(
 
   if (typeof left === "string" || typeof right === "string") {
     if (caseSensitive) {
-      return stringifyCellValue(left) === stringifyCellValue(right);
+      return typeof left === "string" && typeof right === "string"
+        ? left === right
+        : stringifyCellValue(left) === stringifyCellValue(right);
     }
-    return collator.compare(stringifyCellValue(left), stringifyCellValue(right)) === 0;
+    return compareCollatedStrings(
+      collator,
+      typeof left === "string" ? left : stringifyCellValue(left),
+      typeof right === "string" ? right : stringifyCellValue(right),
+    ) === 0;
   }
 
   return stringifyCellValue(left) === stringifyCellValue(right);
@@ -572,9 +587,9 @@ function compareForSort(
   } else if (typeof leftValue === "boolean" && typeof rightValue === "boolean") {
     comparison = Number(leftValue) - Number(rightValue);
   } else {
-    const leftString = stringifyCellValue(leftValue);
-    const rightString = stringifyCellValue(rightValue);
-    comparison = collator.compare(leftString, rightString);
+    const leftString = typeof leftValue === "string" ? leftValue : stringifyCellValue(leftValue);
+    const rightString = typeof rightValue === "string" ? rightValue : stringifyCellValue(rightValue);
+    comparison = compareCollatedStrings(collator, leftString, rightString);
   }
 
   return direction === "asc" ? comparison : -comparison;
@@ -610,7 +625,10 @@ function normalizeSearchText(
   value: unknown,
   locale?: string | readonly string[],
 ): string {
-  return stringifyCellValue(value).toLocaleLowerCase(normalizeLocaleInput(locale));
+  return normalizeCaseInsensitiveText(
+    typeof value === "string" ? value : stringifyCellValue(value),
+    locale,
+  );
 }
 
 function normalizeStringValue(
@@ -618,8 +636,32 @@ function normalizeStringValue(
   caseSensitive: boolean,
   locale?: string | readonly string[],
 ): string {
-  const string = stringifyCellValue(value);
-  return caseSensitive ? string : string.toLocaleLowerCase(normalizeLocaleInput(locale));
+  const string = typeof value === "string" ? value : stringifyCellValue(value);
+  return caseSensitive ? string : normalizeCaseInsensitiveText(string, locale);
+}
+
+function normalizeCaseInsensitiveText(
+  value: string,
+  locale?: string | readonly string[],
+): string {
+  if (locale === undefined) {
+    // ASCII without capital I has locale-independent lowercase mappings. Keep
+    // Turkish/Azeri I, Unicode context rules, and explicit locale requests on
+    // the existing locale-sensitive path; do not guess the host's locale.
+    let localeIndependentAscii = true;
+    for (let index = 0; index < value.length; index++) {
+      const code = value.charCodeAt(index);
+      if (code > 0x7f || code === 0x49) {
+        localeIndependentAscii = false;
+        break;
+      }
+    }
+    if (localeIndependentAscii) {
+      return value.toLowerCase();
+    }
+    return value.toLocaleLowerCase();
+  }
+  return value.toLocaleLowerCase(normalizeLocaleInput(locale));
 }
 
 function normalizeLocaleInput(locale?: string | readonly string[]) {
@@ -627,10 +669,68 @@ function normalizeLocaleInput(locale?: string | readonly string[]) {
 }
 
 function getTableCollator(locale?: string | readonly string[]) {
+  if (locale === undefined) {
+    return defaultTableCollator;
+  }
+
+  const key = typeof locale === "string"
+    ? `string:${locale}`
+    : `array:${JSON.stringify(locale)}`;
+  const cached = tableCollatorsByLocale.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const collator = createTableCollator(locale);
+  if (tableCollatorsByLocale.size >= MAX_LOCALE_COLLATOR_CACHE_ENTRIES) {
+    tableCollatorsByLocale.clear();
+  }
+  tableCollatorsByLocale.set(key, collator);
+  return collator;
+}
+
+function createTableCollator(locale?: string | readonly string[]) {
   return new Intl.Collator(normalizeLocaleInput(locale), {
     numeric: true,
     sensitivity: "base",
   });
+}
+
+function compareCollatedStrings(collator: Intl.Collator, left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+
+  let cache = collationCacheByCollator.get(collator);
+  if (!cache) {
+    cache = { entries: new Map(), size: 0 };
+    collationCacheByCollator.set(collator, cache);
+  }
+
+  const cached = cache.entries.get(left)?.get(right);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const comparison = collator.compare(left, right);
+  if (cache.size < MAX_COLLATION_CACHE_ENTRIES) {
+    let forward = cache.entries.get(left);
+    if (!forward) {
+      forward = new Map();
+      cache.entries.set(left, forward);
+    }
+    forward.set(right, comparison);
+
+    let reverse = cache.entries.get(right);
+    if (!reverse) {
+      reverse = new Map();
+      cache.entries.set(right, reverse);
+    }
+    reverse.set(left, -comparison);
+    cache.size += 2;
+  }
+
+  return comparison;
 }
 
 function stringifyCellValue(value: unknown): string {
