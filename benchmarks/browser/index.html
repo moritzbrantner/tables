@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Tables — browser reference benchmarks</title></head>
+<body><main><a href="../benchmarks.html">Back to table benchmarks</a><h1>Browser reference benchmarks</h1>
+<p>Actual production React grids. Identical data, 100-row pages, 32-pixel rows and a 400-pixel viewport. Times include query/render work and two animation frames, not fixture creation or result verification.</p>
+<p id="versions"></p><div class="controls"><label>Rows <select id="size"><option>1000</option><option>10000</option><option selected>100000</option></select></label><label>Scope <select id="scope"><option value="client">Client query + rendering</option><option value="window">Supplied-window rendering</option></select></label><button disabled id="run">Run comparison</button></div>
+<p id="status" role="status">Ready. No unchanged-query cache hits are timed.</p><h2 id="preview-title">Grid preview</h2><div id="grid"></div><h2>Results</h2><div id="results"></div>
+<p>Community editions only. MUI Community limits a page to 100 rows, so this is a paginated comparison, not a claim about continuous 100,000-row scrolling. Supplied-window scope excludes query work equally for every grid. Richer metadata, features and default styling still differ.</p>
+</main><script type="module" src="./main.tsx"></script></body></html>
