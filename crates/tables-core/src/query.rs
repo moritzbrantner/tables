@@ -1,6 +1,7 @@
 //! Table-owned filtering, search, and stable sorting kernels.
 
 use std::cmp::Ordering;
+use std::fmt::Write;
 
 /// Sort direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -257,23 +258,72 @@ impl TableIndex {
         }
 
         let prepared = PreparedQuery::new(self, query);
-        let mut rows = Vec::with_capacity(self.row_count);
+        // An identity window needs neither a scan nor an all-rows result buffer.
+        if prepared.filters.is_empty() && prepared.search.is_none() && prepared.sort.is_empty() {
+            let start = query.row_offset.min(self.row_count);
+            let end = start
+                .saturating_add(query.row_limit.unwrap_or(self.row_count))
+                .min(self.row_count);
+            return TableIndexResult {
+                filtered_row_count: self.row_count,
+                row_indices: (start..end).map(|row| row as u32).collect(),
+            };
+        }
+
+        let needs_sort = !prepared.sort.is_empty()
+            && query.row_limit != Some(0)
+            && query.row_offset < self.row_count;
+        let capacity = if needs_sort {
+            self.row_count
+        } else {
+            query
+                .row_limit
+                .unwrap_or(self.row_count)
+                .min(self.row_count.saturating_sub(query.row_offset))
+        };
+        let mut rows = Vec::with_capacity(capacity);
+        let mut filtered_row_count = 0;
+        // Query-local scratch: no cross-snapshot cache and no per-number heap allocation.
+        let mut numeric_text = String::new();
         for row_index in 0..self.row_count {
-            if prepared.row_matches(row_index) {
-                rows.push(row_index as u32);
+            if prepared.row_matches(row_index, &mut numeric_text) {
+                if needs_sort || (filtered_row_count >= query.row_offset && rows.len() < capacity) {
+                    rows.push(row_index as u32);
+                }
+                // Even a zero-sized page must report the exact total match count.
+                filtered_row_count += 1;
             }
         }
 
-        let filtered_row_count = rows.len();
-        if !prepared.sort.is_empty() {
-            // Source index is the final tie-breaker, so the comparator itself is total and
-            // an unstable sort preserves the same deterministic stable-table semantics.
-            rows.sort_unstable_by(|left, right| prepared.compare_rows(*left, *right));
+        if needs_sort {
+            let start = query.row_offset.min(rows.len());
+            let end = start
+                .saturating_add(query.row_limit.unwrap_or(rows.len()))
+                .min(rows.len());
+            if start == end {
+                rows.clear();
+            } else {
+                // Select the requested rank interval, then sort only that interval.
+                // Source index is the final tie-breaker, preserving stable-table order.
+                if end < rows.len() {
+                    rows.select_nth_unstable_by(end, |left, right| {
+                        prepared.compare_rows(*left, *right)
+                    });
+                    rows.truncate(end);
+                }
+                if start > 0 {
+                    rows.select_nth_unstable_by(start, |left, right| {
+                        prepared.compare_rows(*left, *right)
+                    });
+                }
+                rows = window_rows(rows, start, None);
+                rows.sort_unstable_by(|left, right| prepared.compare_rows(*left, *right));
+            }
         }
 
         TableIndexResult {
             filtered_row_count,
-            row_indices: window_rows(rows, query.row_offset, query.row_limit),
+            row_indices: rows,
         }
     }
 }
@@ -293,14 +343,19 @@ impl<'a> PreparedQuery<'a> {
             .search
             .as_ref()
             .filter(|search| !search.query.is_empty())
-            .map(|search| PreparedSearch {
-                case_sensitive: search.case_sensitive,
-                columns: search
+            .map(|search| {
+                let needle = normalize_string(&search.query, search.case_sensitive);
+                let columns = search
                     .column_indices
                     .iter()
                     .filter_map(|column_index| index.columns.get(*column_index))
-                    .collect(),
-                needle: normalize_string(&search.query, search.case_sensitive),
+                    .filter(|column| search_column_can_match(column, &needle))
+                    .collect();
+                PreparedSearch {
+                    case_sensitive: search.case_sensitive,
+                    columns,
+                    needle,
+                }
             });
         let sort = query
             .sort
@@ -320,7 +375,7 @@ impl<'a> PreparedQuery<'a> {
         }
     }
 
-    fn row_matches(&self, row_index: usize) -> bool {
+    fn row_matches(&self, row_index: usize, numeric_text: &mut String) -> bool {
         if !self
             .filters
             .iter()
@@ -334,7 +389,13 @@ impl<'a> PreparedQuery<'a> {
         };
 
         search.columns.iter().any(|column| {
-            search_column_matches(column, row_index, search.case_sensitive, &search.needle)
+            search_column_matches(
+                column,
+                row_index,
+                search.case_sensitive,
+                &search.needle,
+                numeric_text,
+            )
         })
     }
 
@@ -394,15 +455,32 @@ fn prepared_filter_matches(filter: &PreparedFilter<'_>, row_index: usize) -> boo
     }
 }
 
+// Conservative character rejection only: all finite numeric display strings use
+// this alphabet (including exponent notation). String columns are never pruned.
+fn search_column_can_match(column: &TableColumn, needle: &str) -> bool {
+    match column {
+        TableColumn::Numeric { .. } => needle
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'.' | b'-' | b'+' | b'e' | b'E')),
+        TableColumn::Boolean { .. } => "true".contains(needle) || "false".contains(needle),
+        TableColumn::String { .. } => true,
+    }
+}
+
 fn search_column_matches(
     column: &TableColumn,
     row_index: usize,
     case_sensitive: bool,
     needle: &str,
+    numeric_text: &mut String,
 ) -> bool {
     match column {
         TableColumn::Numeric { values, validity } => numeric_value(values, validity, row_index)
-            .is_some_and(|value| value.to_string().contains(needle)),
+            .is_some_and(|value| {
+                numeric_text.clear();
+                write!(numeric_text, "{value}").expect("formatting into String cannot fail");
+                numeric_text.contains(needle)
+            }),
         TableColumn::Boolean { values, validity } => boolean_value(values, validity, row_index)
             .is_some_and(|value| (if value { "true" } else { "false" }).contains(needle)),
         TableColumn::String {
