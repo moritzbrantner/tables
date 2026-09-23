@@ -122,6 +122,9 @@
     "test:wasm-parity": "bun run build:wasm:node && TABLES_WASM_PARITY=1 vitest run src/wasm-parity.test.ts",
     "verify": "bun run verify:fast && bun run build:wasm && bun run test:wasm-parity && bun run build && bun run pack:check && bun run verify:browser",
     "verify:browser": "bun run build:examples && bun run test:e2e",
-    "verify:fast": "bun run lint && bun run check-types && bun run test"
+    "verify:fast": "bun run lint && bun run check-types && bun run test",
+    "build:references": "tsc -p benchmarks/browser --noEmit && vite build --config benchmarks/browser/vite.config.ts",
+    "benchmark:references:browser": "node benchmarks/browser/run.mjs",
+    "benchmark:windows": "bun scripts/benchmark-query-windows.ts"
   }
 }

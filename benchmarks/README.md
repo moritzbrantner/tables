@@ -26,7 +26,7 @@ cargo bench --locked -p tables-core --bench query
 
 The native suite writes `.artifacts/table-core-query-benchmark.json`: eight workloads at three sizes, seven timing samples, median, all samples, count, and order-sensitive checksum. Paging workloads also measure the same kernel with full materialization before slicing, alternating measurement order. This reference is explicitly not another table library.
 
-The implementation uses direct identity windows, page-sized unsorted result buffers, rank selection followed by sorting only the requested interval, and query-local reusable numeric formatting scratch. Sorted pages still retain an O(N) candidate buffer. Native paging gains do not automatically mean that the public TypeScript table model is paginated; that model still exposes its full row result.
+The implementation uses direct identity windows, page-sized unsorted result buffers, rank selection followed by sorting only the requested interval, and query-local reusable numeric formatting scratch. Small edge windows now retain bounded candidate batches; middle/deep windows can still require O(N) space. Native paging gains do not automatically mean that the public TypeScript table model is paginated; that model still exposes its full row result.
 
 ## Pinned TanStack comparison
 
@@ -53,4 +53,4 @@ bun benchmarks/references/run.mjs --wasm --max-ratio 1.25
 
 The number is an example, not the repository's default accepted budget. A threshold must be selected from retained evidence. Invalid thresholds fail immediately; exceeded thresholds write the report and exit nonzero. CI records ratios without this noisy timing gate and hard-gates all result parity and deterministic work limits instead. Never raise a ratchet simply to make a regression green.
 
-The Rust Foundation workflow reuses its existing release Wasm build for this comparison and uploads both native and reference JSON reports. AG Grid Community and MUI X Data Grid Community browser adapters remain future work; this harness does not claim parity with those projects or universal browser performance parity.
+The Rust Foundation workflow reuses its existing release Wasm build for this comparison and uploads both native and reference JSON reports. AG Grid Community and MUI X Data Grid Community have a separate production-browser harness in `benchmarks/browser`; headless results alone do not claim browser performance parity.

@@ -1,6 +1,7 @@
 coverage/
 dist/
 dist-examples/
+dist-browser-references/
 .vite/
 .artifacts/
 node_modules/

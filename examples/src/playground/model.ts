@@ -1,4 +1,4 @@
-export type ExamplePage = "benchmarks" | "dense" | "examples" | "states" | "variations" | "wide";
+export type ExamplePage = "benchmarks" | "dense" | "examples" | "states" | "variations" | "wide" | "windowed";
 
 export type TableDensity = "comfortable" | "compact";
 
@@ -54,5 +54,6 @@ export const exampleLinks = [
   { id: "dense", href: "./dense.html", label: "Dense data" },
   { id: "wide", href: "./wide.html", label: "Wide table" },
   { id: "states", href: "./states.html", label: "States" },
+  { id: "windowed", href: "./windowed.html", label: "Windowed queries" },
   { id: "benchmarks", href: "./benchmarks.html", label: "Benchmarks" },
 ] satisfies Array<{ id: ExamplePage; href: string; label: string }>;

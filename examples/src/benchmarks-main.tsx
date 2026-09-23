@@ -156,21 +156,21 @@ const comparisonTargets: ComparisonTarget[] = [
   },
   {
     approach: "Headless table state and row models",
-    benchmarkStatus: "Pinned harness not added yet",
+    benchmarkStatus: "Pinned headless query harness: 8.21.3",
     library: "TanStack Table",
     url: "https://tanstack.com/table/latest/docs/overview",
     virtualization: "Composed with a virtualization library such as TanStack Virtual",
   },
   {
     approach: "Integrated React data grid",
-    benchmarkStatus: "Pinned harness not added yet",
+    benchmarkStatus: "Pinned production browser harness: 36.2.0",
     library: "AG Grid Community",
     url: "https://www.ag-grid.com/react-data-grid/getting-started/",
     virtualization: "Built-in row and column DOM virtualization",
   },
   {
     approach: "Integrated Material UI data grid",
-    benchmarkStatus: "Pinned harness not added yet",
+    benchmarkStatus: "Pinned production browser harness: 9.14.0",
     library: "MUI X Data Grid Community",
     url: "https://mui.com/x/react-data-grid/",
     virtualization: "Built-in row and column virtualization",
@@ -289,6 +289,8 @@ function BenchmarksPage() {
           description="This compares the production Rust/Wasm-backed table query model with plain JavaScript using the same generated-fixture semantics: an exact stage filter, name-only case-insensitive search, and stable multi-column sort. It is a local reference, not a universal ranking."
         >
           <div className="benchmark-actions">
+            <a href="./references/">Compare AG Grid and MUI X in this browser</a>
+            <a href="./windowed.html">Try windowed queries</a>
             <Button disabled={running} onClick={runBrowserComparison}>
               {running ? "Running…" : "Run in this browser"}
             </Button>

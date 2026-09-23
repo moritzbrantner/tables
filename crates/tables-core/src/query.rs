@@ -965,6 +965,47 @@ mod tests {
         assert_eq!(result.row_indices, vec![1, 2]);
     }
 
+    #[test]
+    fn constant_sort_keys_are_removed_without_collapsing_distinct_values() {
+        let mut index = TableIndex::new();
+        let group = index.add_string_column(vec!["same".into(); 6], vec![]);
+        let number =
+            index.add_numeric_column(vec![3.0, -0.0, 0.0, 2.0, 1.0, 0.0], vec![1, 1, 1, 1, 1, 0]);
+        let query = TableQuery {
+            sort: vec![
+                TableSort {
+                    column_index: group,
+                    direction: TableSortDirection::Asc,
+                    nulls: TableNulls::Last,
+                },
+                TableSort {
+                    column_index: number,
+                    direction: TableSortDirection::Asc,
+                    nulls: TableNulls::Last,
+                },
+            ],
+            ..TableQuery::default()
+        };
+        let mut prepared = PreparedQuery::new(&index, &query);
+        prepared.remove_constant_sort_columns(&[0, 1, 2, 3, 4, 5]);
+        assert_eq!(
+            prepared.sort.len(),
+            1,
+            "a constant string must not be compared during sorting"
+        );
+        assert_eq!(index.query(&query).row_indices, vec![1, 2, 4, 3, 0, 5]);
+        let mut signed_zero = PreparedQuery::new(&index, &query);
+        signed_zero.remove_constant_sort_columns(&[1, 2]);
+        assert_eq!(
+            signed_zero.sort.len(),
+            1,
+            "f64 total order distinguishes signed zeros"
+        );
+        let mut nulls = PreparedQuery::new(&index, &query);
+        nulls.remove_constant_sort_columns(&[2, 5]);
+        assert_eq!(nulls.sort.len(), 1, "null and zero are not equivalent");
+    }
+
     fn assert_rows(index: &TableIndex, filter: TableFilter, expected: &[u32]) {
         let result = index.query(&TableQuery {
             filters: vec![filter],
