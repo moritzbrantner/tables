@@ -4,12 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - ".github/workflows/deploy-pages.yml"
       - "scripts/smoke-pages.mjs"
       - "vite.config.ts"
       - "package.json"
       - "bun.lock"
+      - "benchmarks/**"
       - "examples/**"
       - "src/**"
       - "crates/**"
@@ -48,6 +50,12 @@ jobs:
           bun run build:wasm
           bun run build:examples:pages
 
+      - name: Build isolated browser reference page
+        run: |
+          npm ci --prefix benchmarks/browser --ignore-scripts --no-audit --no-fund
+          bun run build:references
+          cp -a dist-browser-references dist-examples/references
+
       - name: Capture Pages query benchmark
         run: bun run benchmark:query -- --output dist-examples/benchmarks/query.json
 
@@ -56,11 +64,25 @@ jobs:
           bunx playwright install --with-deps chromium
           node scripts/smoke-pages.mjs
 
+      - name: Verify browser reference adapters and performance work limits
+        if: success() || failure()
+        env:
+          TABLES_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FULL_PERFORMANCE: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'performance') }}
+        run: |
+          if [ "$FULL_PERFORMANCE" = true ]; then
+            node --test benchmarks/browser/contract.test.mjs
+            node benchmarks/browser/run.mjs --root dist-examples/references
+          else
+            node --test benchmarks/browser/contract.test.mjs
+            node benchmarks/browser/run.mjs --root dist-examples/references --smoke
+          fi
+
       - name: Retain reproducible browser evidence
         if: always()
         run: |
           mkdir -p .artifacts
-          git archive --format=tar HEAD > .artifacts/pages-source.tar
+          git rev-parse HEAD > .artifacts/pages-source-sha.txt
 
       - name: Upload browser evidence
         if: always()
@@ -69,7 +91,13 @@ jobs:
           name: pages-evidence-${{ github.sha }}
           path: |
             .artifacts/pages-smoke.png
-            .artifacts/pages-source.tar
+            .artifacts/windowed-queries.png
+            .artifacts/browser-references.png
+            .artifacts/table-browser-reference-benchmark.json
+            .artifacts/pages-source-sha.txt
+            .artifacts/pages-final-state.png
+            .artifacts/browser-reference-dom.html
+            .artifacts/browser-reference-layout.json
             dist-examples
           if-no-files-found: error
           retention-days: 7

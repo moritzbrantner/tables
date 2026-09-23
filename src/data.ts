@@ -759,3 +759,10 @@ function toNumericValue(value: unknown): number | null {
   }
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
+
+export {
+  createTableWindowModel,
+  type TableQueryWindow,
+  type TableWindowModel,
+  type TableWindowModelOptions,
+} from "./query-window";

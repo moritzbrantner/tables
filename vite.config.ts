@@ -47,6 +47,7 @@ export default defineConfig({
         states: path.resolve(examplesDir, "states.html"),
         variations: path.resolve(examplesDir, "variations.html"),
         wide: path.resolve(examplesDir, "wide.html"),
+        windowed: path.resolve(examplesDir, "windowed.html"),
       },
     },
   },

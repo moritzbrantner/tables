@@ -36,7 +36,7 @@ It also records the same query semantics used by the GitHub Pages quick comparis
 
 The command performs one warm-up invocation followed by five timed samples per workload and records the median plus all samples. It writes `.artifacts/table-query-benchmark.json` with Bun, OS, architecture, CPU model, and CPU-count metadata.
 
-`cargo bench --locked -p tables-core --bench query` separately covers eight native query workloads at 1,000, 10,000, and 100,000 rows. It writes `.artifacts/table-core-query-benchmark.json`, including seven samples per case and same-kernel full-materialization references for paged queries. Its reference is not another library. Native paging optimizations do not change the public TypeScript model's full-result API.
+`cargo bench --locked -p tables-core --bench query` separately covers eight native query workloads at 1,000, 10,000, and 100,000 rows. It writes `.artifacts/table-core-query-benchmark.json`, including seven samples per case and same-kernel full-materialization references for paged queries. Its reference is not another library. The full-result model is unchanged; the additive windowed model forwards limits into Rust.
 
 ### Browser/virtualization workloads
 
@@ -67,7 +67,7 @@ The report records both the repeated-Wasm/reference ratio and the cold-materiali
 
 `benchmarks/references/run.mjs` compares the public table model, both TypeScript and release Rust/Wasm, with pinned TanStack Table core. It records cold snapshots separately from changed-query workloads, rotates measurement order, checks every result's complete row order, and retains environment/version/snapshot evidence in `.artifacts/table-reference-benchmark.json`. The workflow reuses its existing release Wasm build. See the [commands, methodology, limitations, and optional relative gate](../benchmarks/README.md).
 
-This is headless query evidence, not a DOM benchmark. AG Grid and MUI X browser comparison adapters are not yet implemented.
+This is headless query evidence, not a DOM benchmark. Pinned AG Grid and MUI X production browser adapters are described below.
 
 ## Comparing runs
 
@@ -86,3 +86,66 @@ The normal Rust tests enforce constant search allocation counts, page-sized unso
 ## What the benchmarks do not guarantee
 
 The committed scripts and uploaded artifacts are reproducibility evidence, not a claim that 100,000-row client-side processing is appropriate for every application. Row shapes, custom cell rendering, browser versions, hardware, locale-aware comparison, and application state can materially change costs. Remote datasets should still prefer manual/server mode when query work belongs on the backend.
+
+## Windowed public queries
+
+`createTableWindowModel({ rows, columns, filter, sort, window: { offset, limit } })`
+returns only the requested result window. `filteredRowCount` and `sortedRowCount`
+continue to describe all matches; `rowIndexOffset` is the clamped global position.
+The default full-result `createTableModel` API is unchanged. Offsets and limits
+must be non-negative safe integers; a zero limit is a count-only query.
+
+The built-in Wasm adapter passes the window into Rust and only transfers/maps
+those source indices back to JavaScript. Older custom kernels, explicit locales,
+and active JS predicates retain the existing full-model semantics before slicing.
+That compatibility path does not claim bounded query memory. Treat row snapshots
+and schema definitions as immutable, just as for the full Wasm model.
+
+For small leading sorted pages, Rust retains at most twice `offset + limit`
+candidates. Near the end it counts first and can retain the smaller suffix.
+Middle/deep windows still have an O(N) worst case, and exact filtered counts still
+require visiting matching candidates. No incorrect claim of O(page size) memory
+for arbitrary offsets is made. Ratchets enforce a 4 KiB requested-allocation
+budget for 32-row edge windows at 1k, 10k and 100k source rows.
+
+`bun run benchmark:windows` compares the public window path with the full public
+model followed by slicing, on the same prepared snapshot and in alternating order.
+It writes `.artifacts/table-window-query-benchmark.json`. Build the node release
+Wasm artifact first; the existing CI Wasm lane reuses that build.
+
+The `/windowed.html` example exercises this API directly, including URL-backed
+query/sort/offset state, full match counts, and global ARIA row positions.
+
+## Production browser references
+
+The separate `/references/` page runs actual pinned AG Grid Community 36.2.0 and
+MUI X Data Grid Community 9.14.0 React components against `VirtualTable` with the
+windowed model. Its dependencies live in `benchmarks/browser`; they are not part
+of the published table package or the normal examples' JavaScript bundle.
+
+Two scopes remain separate: client query plus rendering, and supplied-window
+rendering with query work outside every provider's timer. All use 100-row pages,
+32-pixel row height, and a 400-pixel grid viewport. MUI Community's 100-row page
+limit means this is not a continuous 100k-row scrolling comparison. Mount samples
+use fresh snapshot identities; changed queries establish the opposite state
+outside timing and then measure a real state change. Provider order rotates.
+
+Every invocation validates the complete ordered page, matching count, first
+rendered row, and bounded mounted row count. Reports retain all samples, exact
+provider pins, browser/CPU information and source identity. Two animation frames
+are included in latency; sub-frame timing differences are not pure query costs.
+Richer provider metadata and feature/styling differences remain relevant.
+
+```sh
+npm ci --prefix benchmarks/browser --ignore-scripts --no-audit --no-fund
+bun run build:wasm
+bun run build:references
+bunx playwright install chromium
+bun run benchmark:references:browser
+```
+
+Normal Pages PR validation runs the 1k-row adapter smoke matrix; main, manual,
+and `performance`-labelled PR runs execute all 1k/10k/100k cases. Both use the
+production build at its real `/tables/references/` path. Timings are descriptive
+unless an explicit controlled-run `--max-ratio` threshold is supplied; parity and
+DOM work limits always fail closed.

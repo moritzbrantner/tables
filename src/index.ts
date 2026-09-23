@@ -85,3 +85,10 @@ export {
   type VariableVirtualRangeOptions,
   type VirtualRange,
 } from "./virtualization";
+
+export {
+  createTableWindowModel,
+  type TableQueryWindow,
+  type TableWindowModel,
+  type TableWindowModelOptions,
+} from "./query-window";

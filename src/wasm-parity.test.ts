@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 import {
   createTableModel,
+  createTableWindowModel,
   type TableDataColumn,
   type TableFilter,
   type TableSortState,
@@ -194,4 +195,31 @@ describe.runIf(enabled)("tables Wasm parity", () => {
 
     expect(actual.sourceIndices).toEqual(expected.rows.map((row) => rows.indexOf(row)));
   });
+  test("windowed public models preserve order/counts across sparse matches and extreme windows", () => {
+    const rows = Array.from({ length: 513 }, (_, id) => ({ id, label: `Account ${id % 17}`, score: id % 13 === 0 ? null : (id * 7919) % 37 }));
+    const columns: TableDataColumn<(typeof rows)[number]>[] = [
+      { id: "id", accessor: "id", type: "number" },
+      { id: "label", accessor: "label", type: "string" },
+      { id: "score", accessor: "score", type: "number" },
+    ];
+    for (const query of ["", "account 1", "missing"]) {
+      for (const direction of ["asc", "desc"] as const) {
+        const options = { rows, columns, filter: { query, queryColumnIds: ["label"] }, sort: [{ columnId: "score", direction }] };
+        setTableQueryKernel(null);
+        const expected = createTableModel(options);
+        setTableQueryKernel(kernel);
+        for (const offset of [0, 1, 100, 450, 500, 513, Number.MAX_SAFE_INTEGER]) {
+          for (const limit of [0, 1, 32, 100, Number.MAX_SAFE_INTEGER]) {
+            const page = createTableWindowModel({ ...options, window: { offset, limit } });
+            expect(page.rows).toEqual(expected.rows.slice(offset, offset + Math.min(limit, expected.rows.length)));
+            expect(page.filteredRowCount).toBe(expected.filteredRowCount);
+            expect(page.sortedRowCount).toBe(expected.sortedRowCount);
+            expect(page.rowIndexOffset).toBe(Math.min(offset, expected.filteredRowCount));
+          }
+        }
+      }
+    }
+    setTableQueryKernel(null);
+  });
+
 });

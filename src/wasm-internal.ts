@@ -6,7 +6,8 @@ import {
   type TableFilter,
   type TableSortState,
 } from "./data";
-import type { TableQueryKernel, TableQueryResult } from "./query-kernel";
+import { validateTableQueryWindow } from "./query-window";
+import type { TableQueryKernel, TableQueryResult, TableQueryWindow } from "./query-kernel";
 import type {
   FixedVirtualRangeOptions,
   VariableVirtualRangeOptions,
@@ -152,6 +153,10 @@ export function createTableWasmKernelFromModule(value: unknown): TableWasmKernel
         ),
       );
     },
+    queryTableWindow(rows, columns, window, filter, sort = []) {
+      validateTableQueryWindow(window);
+      return queryTableWithRust(tableIndexCache, rows, columns, filter, sort, window);
+    },
     queryTable(rows, columns, filter, sort = []) {
       return queryTableWithRust(tableIndexCache, rows, columns, filter, sort);
     },
@@ -211,11 +216,12 @@ function queryTableWithRust<TRow>(
   columns: readonly TableDataColumn<TRow>[],
   filter: TableFilter<TRow> | null | undefined,
   sort: TableSortState,
+  window?: TableQueryWindow,
 ): TableQueryResult {
   const queryText = filter?.query?.trim();
   const columnFilters = filter?.columnFilters ?? [];
   if (!queryText && columnFilters.length === 0 && sort.length === 0) {
-    return identityTableQueryResult(rows.length);
+    return identityTableQueryResult(rows.length, window);
   }
 
   const prepared = cache.get(rows, columns);
@@ -256,12 +262,13 @@ function queryTableWithRust<TRow>(
   }
 
   if (filters.length === 0 && !search && wasmSort.length === 0) {
-    return identityTableQueryResult(rows.length);
+    return identityTableQueryResult(rows.length, window);
   }
 
   const query: WasmTableQuery = {
     filters,
-    rowOffset: 0,
+    rowOffset: Math.min(rows.length, window?.offset ?? 0),
+    rowLimit: window ? Math.min(rows.length, window.limit) : undefined,
     search,
     sort: wasmSort,
   };
@@ -375,10 +382,12 @@ function createSearch<TRow>(
   };
 }
 
-function identityTableQueryResult(rowCount: number): TableQueryResult {
+function identityTableQueryResult(rowCount: number, window?: TableQueryWindow): TableQueryResult {
+  const offset = Math.min(rowCount, window?.offset ?? 0);
+  const length = Math.min(rowCount - offset, window?.limit ?? rowCount);
   return {
     filteredRowCount: rowCount,
-    sourceIndices: Array.from({ length: rowCount }, (_, index) => index),
+    sourceIndices: Array.from({ length }, (_, index) => index + offset),
   };
 }
 
@@ -596,14 +605,17 @@ function decodeTableQueryResult(values: ArrayLike<number>, rowCount: number): Ta
   }
 
   const filteredRowCount = readIndex(values[0], "filteredRowCount");
-  const sourceIndices: number[] = [];
+  const sourceIndices = new Array<number>(values.length - 1);
 
   for (let index = 1; index < values.length; index += 1) {
-    const sourceIndex = readIndex(values[index], `sourceIndex[${index - 1}]`);
+    const sourceIndex = values[index];
+    if (typeof sourceIndex !== "number" || !Number.isSafeInteger(sourceIndex) || sourceIndex < 0) {
+      throw new TypeError(`tables Wasm field sourceIndex[${index - 1}] must be a non-negative safe integer`);
+    }
     if (sourceIndex >= rowCount) {
       throw new RangeError(`tables Wasm source index ${sourceIndex} is outside ${rowCount} rows`);
     }
-    sourceIndices.push(sourceIndex);
+    sourceIndices[index - 1] = sourceIndex;
   }
 
   return { filteredRowCount, sourceIndices };
