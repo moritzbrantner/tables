@@ -1,0 +1,71 @@
+name: Temporary tables validation
+on:
+  push:
+    branches: [agent/tables-window-validation]
+permissions:
+  contents: write
+concurrency:
+  group: tables-window-validation
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          fetch-depth: 0
+      - name: Apply reviewed local change to guarded work branch
+        run: |
+          cp agent-change.patch.gz /tmp/change.gz
+          git checkout perf/windowed-reference-parity
+          test "$(git rev-parse HEAD)" = 7cfec05fb37ab1e7b6b0bd3c8e05907005d3a7b6
+          gzip -dc /tmp/change.gz > /tmp/change.patch
+          ! grep -q '^diff --git a/.github/' /tmp/change.patch
+          git apply --check /tmp/change.patch
+          git apply /tmp/change.patch
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+      - name: Install validation dependencies
+        run: |
+          rustup toolchain install
+          rustup component add rustfmt clippy
+          bun install --frozen-lockfile
+          npm install --prefix benchmarks/browser --ignore-scripts --no-audit --no-fund
+          npm install --prefix benchmarks/references --package-lock-only --ignore-scripts --no-audit --no-fund
+          if ! command -v wasm-pack; then cargo install wasm-pack --version 0.14.0 --locked; fi
+      - name: Format and validate query changes
+        run: |
+          cargo fmt --all
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo test --locked --workspace -- --show-output
+          bun run check-types
+          bun run test
+          bun run build:wasm
+          bun run test:wasm-parity
+      - name: Commit validated query foundation
+        run: |
+          git config user.name 'moritzbrantner'
+          git config user.email '31051084+moritzbrantner@users.noreply.github.com'
+          git add crates src benchmarks
+          git diff --cached --check
+          git commit -m 'perf(query): bound sorted windows and expose windowed models'
+          git push origin HEAD:refs/heads/perf/windowed-reference-parity
+      - name: Retain local validation capsule
+        if: always()
+        run: |
+          mkdir -p .artifacts/capsule
+          git diff HEAD > .artifacts/capsule/uncommitted.patch
+          git rev-parse HEAD > .artifacts/capsule/source-sha.txt
+          cp "$(command -v bun)" .artifacts/capsule/bun
+          cp "$(command -v wasm-pack)" .artifacts/capsule/wasm-pack || true
+          cp -a "$HOME/.rustup/toolchains/1.98.1-x86_64-unknown-linux-gnu" .artifacts/capsule/rust
+          tar -czf /tmp/tables-validation-capsule.tar.gz --exclude=.git --exclude=target --exclude=.artifacts/tables-wasm-node --exclude=.artifacts/tables-wasm-node-release .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: tables-validation-capsule
+          path: /tmp/tables-validation-capsule.tar.gz
+          retention-days: 1
+          compression-level: 0
