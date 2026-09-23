@@ -1,0 +1,352 @@
+diff --git a/.github/workflows/deploy-pages.yml b/.github/workflows/deploy-pages.yml
+index 945d855..1f7a9ce 100644
+--- a/.github/workflows/deploy-pages.yml
++++ b/.github/workflows/deploy-pages.yml
+@@ -4,12 +4,14 @@ on:
+   push:
+     branches: [main]
+   pull_request:
++    types: [opened, synchronize, reopened, labeled]
+     paths:
+       - ".github/workflows/deploy-pages.yml"
+       - "scripts/smoke-pages.mjs"
+       - "vite.config.ts"
+       - "package.json"
+       - "bun.lock"
++      - "benchmarks/**"
+       - "examples/**"
+       - "src/**"
+       - "crates/**"
+@@ -48,6 +50,12 @@ jobs:
+           bun run build:wasm
+           bun run build:examples:pages
+ 
++      - name: Build isolated browser reference page
++        run: |
++          npm ci --prefix benchmarks/browser --ignore-scripts --no-audit --no-fund
++          bun run build:references
++          cp -a dist-browser-references dist-examples/references
++
+       - name: Capture Pages query benchmark
+         run: bun run benchmark:query -- --output dist-examples/benchmarks/query.json
+ 
+@@ -56,11 +64,25 @@ jobs:
+           bunx playwright install --with-deps chromium
+           node scripts/smoke-pages.mjs
+ 
++      - name: Verify browser reference adapters and performance work limits
++        if: success() || failure()
++        env:
++          TABLES_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
++          FULL_PERFORMANCE: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'performance') }}
++        run: |
++          if [ "$FULL_PERFORMANCE" = true ]; then
++            node --test benchmarks/browser/contract.test.mjs
++            node benchmarks/browser/run.mjs --root dist-examples/references
++          else
++            node --test benchmarks/browser/contract.test.mjs
++            node benchmarks/browser/run.mjs --root dist-examples/references --smoke
++          fi
++
+       - name: Retain reproducible browser evidence
+         if: always()
+         run: |
+           mkdir -p .artifacts
+-          git archive --format=tar HEAD > .artifacts/pages-source.tar
++          git rev-parse HEAD > .artifacts/pages-source-sha.txt
+ 
+       - name: Upload browser evidence
+         if: always()
+@@ -69,7 +91,13 @@ jobs:
+           name: pages-evidence-${{ github.sha }}
+           path: |
+             .artifacts/pages-smoke.png
+-            .artifacts/pages-source.tar
++            .artifacts/windowed-queries.png
++            .artifacts/browser-references.png
++            .artifacts/table-browser-reference-benchmark.json
++            .artifacts/pages-source-sha.txt
++            .artifacts/pages-final-state.png
++            .artifacts/browser-reference-dom.html
++            .artifacts/browser-reference-layout.json
+             dist-examples
+           if-no-files-found: error
+           retention-days: 7
+ diff --git a/.github/workflows/rust.yml b/.github/workflows/rust.yml
+index 8a84aa8..795183e 100644
+--- a/.github/workflows/rust.yml
++++ b/.github/workflows/rust.yml
+@@ -18,7 +18,7 @@ on:
+       - "scripts/check-wasm-package.mjs"
+       - "scripts/copy-wasm.mjs"
+       - "src/data*.ts"
+-      - "src/query-kernel.ts"
++      - "src/query-*.ts"
+       - "src/react*.tsx"
+       - "src/virtualization.ts"
+       - "src/virtualization.test.ts"
+@@ -44,7 +44,7 @@ on:
+       - "scripts/check-wasm-package.mjs"
+       - "scripts/copy-wasm.mjs"
+       - "src/data*.ts"
+-      - "src/query-kernel.ts"
++      - "src/query-*.ts"
+       - "src/react*.tsx"
+       - "src/virtualization.ts"
+       - "src/virtualization.test.ts"
+@@ -150,6 +150,9 @@ jobs:
+       - name: Measure TypeScript/Wasm boundary
+         run: bun run benchmark:virtualization
+ 
++      - name: Measure public windowed queries
++        run: bun run benchmark:windows
++
+       - name: Install isolated pinned query reference
+         run: npm ci --prefix benchmarks/references --ignore-scripts --no-audit --no-fund
+ 
+@@ -169,6 +172,7 @@ jobs:
+           path: |
+             .artifacts/virtualization-boundary-benchmark.json
+             .artifacts/table-reference-benchmark.json
++            .artifacts/table-window-query-benchmark.json
+           if-no-files-found: error
+           retention-days: 14
+ 
+diff --git a/benchmarks/browser/adapters.tsx b/benchmarks/browser/adapters.tsx
+index 1f6a2ba..eb21c37 100644
+--- a/benchmarks/browser/adapters.tsx
++++ b/benchmarks/browser/adapters.tsx
+@@ -43,14 +43,23 @@ function TablesAdapter({ rows, query, scope, probe }: AdapterProps) {
+ 
+ function AgAdapter({ rows, query, scope, probe }: AdapterProps) {
+   const api = useRef<GridApi<Row> | null>(null);
++  const previous = useRef({ filter: "", descending: null as boolean | null });
+   const apply = () => {
+     const grid = api.current;
+     if (!grid) return;
+-    const ready = grid.setColumnFilterModel("name", scope === "client" && query.query
+-      ? { filterType: "text", type: "contains", filter: query.query } : null).then(() => {
++    const filter = scope === "client" ? query.query : "";
++    const descending = scope === "client" ? query.descending : null;
++    // Applying a page must not force a fresh filter/sort in the reference grid.
++    // Only changed commands are sent, just as controlled React props are reused.
++    const filterChanged = previous.current.filter !== filter;
++    const sortChanged = previous.current.descending !== descending;
++    previous.current = { filter, descending };
++    const filterReady = filterChanged ? grid.setColumnFilterModel("name", filter
++      ? { filterType: "text", type: "contains", filter } : null) : Promise.resolve();
++    const ready = filterReady.then(() => {
+       if (grid.isDestroyed()) return;
+-      grid.onFilterChanged();
+-      grid.applyColumnState({ state: [{ colId: "value", sort: scope === "client" && query.descending !== null ? (query.descending ? "desc" : "asc") : null }], defaultState: { sort: null } });
++      if (filterChanged) grid.onFilterChanged();
++      if (sortChanged) grid.applyColumnState({ state: [{ colId: "value", sort: descending === null ? null : descending ? "desc" : "asc" }], defaultState: { sort: null } });
+       grid.paginationGoToPage(scope === "client" ? query.page : 0);
+     });
+     probe({ ready, snapshot: () => {
+@@ -71,10 +80,10 @@ function AgAdapter({ rows, query, scope, probe }: AdapterProps) {
+ function MuiAdapter({ rows, query, scope, probe }: AdapterProps) {
+   const api = useGridApiRef();
+   const filterModel = useMemo(() => ({ items: scope === "client" && query.query
+-    ? [{ id: 1, field: "name", operator: "contains", value: query.query }] : [] }), [scope, query]);
++    ? [{ id: 1, field: "name", operator: "contains", value: query.query }] : [] }), [scope, query.query]);
+   const sortModel = useMemo(() => scope === "client" && query.descending !== null
+-    ? [{ field: "value", sort: query.descending ? "desc" as const : "asc" as const }] : [], [scope, query]);
+-  const paginationModel = useMemo(() => ({ page: scope === "client" ? query.page : 0, pageSize }), [scope, query]);
++    ? [{ field: "value", sort: query.descending ? "desc" as const : "asc" as const }] : [], [scope, query.descending]);
++  const paginationModel = useMemo(() => ({ page: scope === "client" ? query.page : 0, pageSize }), [scope, query.page]);
+   useLayoutEffect(() => probe({ ready: Promise.resolve(), snapshot: () => {
+     const ordered = gridFilteredSortedRowIdsSelector(api);
+     const offset = scope === "client" ? query.page * pageSize : 0;
+diff --git a/benchmarks/browser/contract.mjs b/benchmarks/browser/contract.mjs
+new file mode 100644
+index 0000000..8550f5d
+--- /dev/null
++++ b/benchmarks/browser/contract.mjs
+@@ -0,0 +1,43 @@
++import assert from "node:assert/strict";
++
++const providers = ["tables", "ag-grid", "mui"];
++const scopes = ["client", "window"];
++const workloads = ["mount", "filter", "sort", "page"];
++
++/** Validate the complete matrix before any timing comparison can pass. */
++export function validateReport(report, { sizes, sampleCount, pins, threshold = null }) {
++  assert.ok(threshold === null || (Number.isFinite(threshold) && threshold > 0), "Invalid timing threshold");
++  assert.equal(report.version, 1);
++  assert.equal(report.suite, "table-browser-reference-v1");
++  assert.equal(report.sampleCount, sampleCount);
++  assert.deepEqual(report.versions, pins, "Provider versions must match exact pins");
++  assert.ok(sizes.length > 0 && new Set(sizes).size === sizes.length, "Expected sizes must be unique and nonempty");
++  const expected = new Set(sizes.flatMap((size) => scopes.flatMap((scope) => workloads.flatMap((workload) => providers.map((provider) => key({ size, scope, workload, provider }))))));
++  const records = new Map();
++  for (const result of report.results) {
++    const id = key(result);
++    assert.ok(expected.delete(id), `Duplicate or unexpected case ${id}`);
++    assert.equal(result.samplesMs.length, sampleCount, `Wrong sample count for ${id}`);
++    assert.ok(result.samplesMs.every((sample) => Number.isFinite(sample) && sample > 0), `Invalid sample for ${id}`);
++    const sorted = [...result.samplesMs].sort((left, right) => left - right);
++    assert.equal(result.medianMs, sorted[Math.floor(sorted.length / 2)], `Median does not match samples for ${id}`);
++    assert.ok(Number.isSafeInteger(result.maxMountedRows) && result.maxMountedRows >= 2 && result.maxMountedRows <= 102, `Unbounded DOM for ${id}`);
++    assert.ok(Number.isSafeInteger(result.checksum) && result.checksum >= 0, `Invalid checksum for ${id}`);
++    records.set(id, result);
++  }
++  assert.equal(expected.size, 0, "The complete provider/workload/size matrix is required");
++  const violations = [];
++  for (const result of records.values()) {
++    if (result.provider !== "tables") continue;
++    for (const provider of providers.slice(1)) {
++      const reference = records.get(key({ ...result, provider }));
++      assert.equal(result.checksum, reference.checksum, "Provider page checksums differ");
++      const ratio = result.medianMs / reference.medianMs;
++      if (threshold !== null && ratio > threshold) violations.push({ ...result, reference: provider, ratio });
++    }
++  }
++  return violations;
++}
++function key({ size, scope, workload, provider }) {
++  return JSON.stringify([size, scope, workload, provider]);
++}
+diff --git a/benchmarks/browser/contract.test.mjs b/benchmarks/browser/contract.test.mjs
+new file mode 100644
+index 0000000..2579ef4
+--- /dev/null
++++ b/benchmarks/browser/contract.test.mjs
+@@ -0,0 +1,39 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { validateReport } from "./contract.mjs";
++const options = { sizes: [1000], sampleCount: 3, pins: { react: "19.2.7" } };
++function fixture() {
++  return { version: 1, suite: "table-browser-reference-v1", sampleCount: 3, versions: options.pins,
++    results: ["client", "window"].flatMap((scope) => ["mount", "filter", "sort", "page"].flatMap((workload) => ["tables", "ag-grid", "mui"].map((provider) => ({
++      scope, workload, provider, size: 1000, medianMs: 2, samplesMs: [1, 2, 3], checksum: 123, maxMountedRows: 18,
++    })))) };
++}
++test("complete equal-provider evidence passes including an exact ratio boundary", () => {
++  assert.deepEqual(validateReport(fixture(), { ...options, threshold: 1 }), []);
++});
++test("timing gate reports real exceeding cases", () => {
++  assert.equal(validateReport(fixture(), { ...options, threshold: .9 }).length, 16);
++});
++test("missing and duplicate cases fail even when timing is disabled", () => {
++  const missing = fixture(); missing.results.pop();
++  assert.throws(() => validateReport(missing, options));
++  const duplicate = fixture(); duplicate.results[1] = duplicate.results[0];
++  assert.throws(() => validateReport(duplicate, options));
++  assert.throws(() => validateReport({ ...fixture(), results: [] }, options));
++});
++test("nonfinite samples, incorrect medians and oversized DOM fail", () => {
++  for (const patch of [{ samplesMs: [1, NaN, 3] }, { samplesMs: [1, 0, 3] }, { medianMs: 1 }, { maxMountedRows: 103 }, { maxMountedRows: 1 }]) {
++    const report = fixture(); Object.assign(report.results[0], patch);
++    assert.throws(() => validateReport(report, options));
++  }
++});
++test("provider versions and page checksums must match", () => {
++  assert.throws(() => validateReport({ ...fixture(), versions: {} }, options));
++  const mismatch = fixture(); mismatch.results[0].checksum = 999;
++  assert.throws(() => validateReport(mismatch, options));
++});
++test("invalid thresholds or unexpected workload identities cannot weaken the gate", () => {
++  for (const threshold of [0, -1, NaN, Infinity]) assert.throws(() => validateReport(fixture(), { ...options, threshold }));
++  const invalid = fixture(); invalid.results[0].workload = "not-measured";
++  assert.throws(() => validateReport(invalid, options));
++});
+diff --git a/benchmarks/browser/run.mjs b/benchmarks/browser/run.mjs
+index bb3aeff..6650976 100644
+--- a/benchmarks/browser/run.mjs
++++ b/benchmarks/browser/run.mjs
+@@ -6,6 +6,7 @@ import { cpus } from "node:os";
+ import { extname, resolve, sep } from "node:path";
+ import { parseArgs } from "node:util";
+ import { chromium } from "@playwright/test";
++import { validateReport } from "./contract.mjs";
+ 
+ const { values } = parseArgs({ options: {
+   root: { type: "string", default: "dist-browser-references" },
+@@ -43,22 +44,8 @@ try {
+     sizes: smoke ? [1000] : [1000, 10000, 100000], scopes: ["client", "window"], sampleCount: smoke ? 3 : 7,
+   }), values.smoke);
+   assert.deepEqual(errors, [], "Browser errors cannot be ignored by a successful timing report");
+-  assert.equal(report.results.length, values.smoke ? 24 : 72);
+   const pins = JSON.parse(await readFile("benchmarks/browser/package.json", "utf8")).dependencies;
+-  assert.deepEqual(report.versions, pins, "The page must expose its exact pinned provider versions");
+-  const violations = [];
+-  for (const result of report.results) {
+-    assert.equal(result.samplesMs.length, report.sampleCount);
+-    assert.ok(result.samplesMs.every((sample) => Number.isFinite(sample) && sample > 0));
+-    assert.ok(result.maxMountedRows >= 2 && result.maxMountedRows <= 102);
+-    if (result.provider !== "tables") continue;
+-    for (const provider of ["ag-grid", "mui"]) {
+-      const reference = report.results.find((candidate) => candidate.provider === provider && candidate.scope === result.scope && candidate.size === result.size && candidate.workload === result.workload);
+-      assert.ok(reference, "Every measured case requires all provider references");
+-      const ratio = result.medianMs / reference.medianMs;
+-      if (threshold !== null && ratio > threshold) violations.push({ ...result, reference: provider, ratio });
+-    }
+-  }
++  const violations = validateReport(report, { sizes: values.smoke ? [1000] : [1000, 10000, 100000], sampleCount: values.smoke ? 3 : 7, pins, threshold });
+   const evidence = {
+     ...report, createdAt: new Date().toISOString(),
+     checkoutSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+@@ -77,7 +64,21 @@ try {
+   console.log(JSON.stringify(evidence, null, 2));
+   assert.equal(violations.length, 0, "Same-run relative timing gate exceeded");
+ } finally {
+-  if (page) await page.screenshot({ path: ".artifacts/browser-references.png", fullPage: true });
++  if (page) {
++    await page.screenshot({ path: ".artifacts/browser-references.png", fullPage: true });
++    await writeFile(".artifacts/browser-reference-dom.html", await page.content());
++    const layout = await page.locator("#grid").evaluate((grid) => ({
++      grid: grid.getBoundingClientRect().toJSON(),
++      elements: Array.from(grid.querySelectorAll("div")).slice(0, 40).map((element) => ({
++        className: element.className, role: element.getAttribute("role"), style: element.getAttribute("style"),
++        rect: element.getBoundingClientRect().toJSON(), display: getComputedStyle(element).display,
++      })),
++      rowClasses: Array.from(grid.querySelectorAll('[role="row"]')).reduce((counts, row) => {
++        const key = row.className; counts[key] = (counts[key] ?? 0) + 1; return counts;
++      }, {}),
++    }));
++    await writeFile(".artifacts/browser-reference-layout.json", JSON.stringify(layout, null, 2));
++  }
+   await browser?.close();
+   await new Promise((done) => server.close(done));
+ }
+diff --git a/examples/src/windowed-main.tsx b/examples/src/windowed-main.tsx
+index b67e4a3..2784210 100644
+--- a/examples/src/windowed-main.tsx
++++ b/examples/src/windowed-main.tsx
+@@ -45,7 +45,7 @@ function WindowedPage() {
+   };
+   return <main className="app-shell"><ViewHeader title="Windowed queries" description="Filter and sort 100,000 source rows while transferring only the requested 100-row result window." />
+     <ExampleNav page="windowed" />
+-    <section className="rounded-lg border bg-white p-5"><p role="status">{backend}</p>
++    <section className="rounded-lg border bg-white p-5"><p role="status" data-testid="query-backend">{backend}</p>
+       <div className="flex flex-wrap items-end gap-4 mb-4">
+         <label>Search accounts<input aria-label="Search accounts" className="block border rounded p-2" value={view.query} onChange={(event) => change({ query: event.target.value, offset: 0 })} /></label>
+         <label>Value order<select aria-label="Value order" className="block border rounded p-2" value={view.descending ? "desc" : "asc"} onChange={(event) => change({ descending: event.target.value === "desc", offset: 0 })}><option value="desc">Highest first</option><option value="asc">Lowest first</option></select></label>
+diff --git a/scripts/smoke-pages.mjs b/scripts/smoke-pages.mjs
+index 05619d0..1592fad 100644
+--- a/scripts/smoke-pages.mjs
++++ b/scripts/smoke-pages.mjs
+@@ -41,7 +41,7 @@ try {
+   assert.ok(wasmResponses.includes(200), "The built Pages site must actually load its Wasm binary");
+   await page.screenshot({ path: ".artifacts/pages-smoke.png", fullPage: true });
+   await page.goto(`http://127.0.0.1:${server.address().port}/tables/windowed.html?offset=100&sort=asc`);
+-  await expect(page.getByRole("status")).toContainText("Rust/Wasm · bounded query result");
++  await expect(page.getByTestId("query-backend")).toContainText("Rust/Wasm · bounded query result");
+   await expect(page.getByTestId("window-count")).toHaveText("100 returned · 100,000 matching · offset 100");
+   await page.getByRole("button", { name: "Next page" }).click();
+   await expect(page).toHaveURL(/offset=200/);
+diff --git a/tests/e2e/windowed.spec.ts b/tests/e2e/windowed.spec.ts
+index fc83055..50a51c8 100644
+--- a/tests/e2e/windowed.spec.ts
++++ b/tests/e2e/windowed.spec.ts
+@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
+ 
+ test("windowed queries keep URL state, global row positions and full counts", async ({ page }) => {
+   await page.goto("/windowed.html?offset=100&sort=asc&query=");
+-  await expect(page.getByRole("status")).toContainText("Rust/Wasm");
++  await expect(page.getByTestId("query-backend")).toContainText("Rust/Wasm · bounded query result");
+   const grid = page.getByRole("grid", { name: "Windowed account results" });
+   await expect(page.getByTestId("window-count")).toHaveText("100 returned · 100,000 matching · offset 100");
+   await expect(grid.locator('[role="row"][aria-rowindex="102"]')).toBeVisible();

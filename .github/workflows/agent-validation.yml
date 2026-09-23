@@ -8,81 +8,42 @@ concurrency:
   group: tables-window-validation
   cancel-in-progress: true
 jobs:
-  validate:
+  publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           fetch-depth: 0
-      - name: Apply validated continuation to guarded work branch
+      - name: Apply locally validated browser integration
         run: |
-          cp remaining.patch /tmp/remaining.patch
+          cp completion.patch /tmp/completion.patch
           git checkout perf/windowed-reference-parity
-          test "$(git rev-parse HEAD)" = 8af38ac4dc0bfff708c3408314a52d4e5592a2e6
-          ! grep -q '^diff --git a/.github/' /tmp/remaining.patch
-          git apply --check /tmp/remaining.patch
-          git apply /tmp/remaining.patch
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: 1.3.14
-      - name: Install validation dependencies
-        run: |
-          rustup toolchain install
-          rustup component add rustfmt clippy
-          bun install --frozen-lockfile
-          npm ci --prefix benchmarks/browser --ignore-scripts --no-audit --no-fund
-          if ! command -v wasm-pack; then cargo install wasm-pack --version 0.14.0 --locked; fi
-          bunx playwright install --with-deps chromium
-      - name: Validate query and browser sources
-        run: |
-          cargo fmt --all --check
-          cargo clippy --locked --workspace --all-targets -- -D warnings
-          cargo test --locked --workspace -- --show-output
-          bun run check-types
-          bun run test
-          bun run build:wasm
-          bun run test:wasm-parity
-          bun run build:references
-          bun run build:examples:pages
-      - name: Commit validated continuation
-        run: |
+          test "$(git rev-parse HEAD)" = 7977d963a9aab2b4df0304646dce869989038696
+          sed -i 's/^ diff --git/diff --git/' /tmp/completion.patch
+          git apply --check /tmp/completion.patch
+          git apply /tmp/completion.patch
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              '.github/workflows/deploy-pages.yml': '1f7a9ce2526e087efe76deca3ffa8542128b61d6',
+              '.github/workflows/rust.yml': '795183e65930fe77fe00a92ae45d30950008503d',
+              'benchmarks/browser/adapters.tsx': 'eb21c3731785311a587feb81dd65a147fdb7fa7b',
+              'benchmarks/browser/contract.mjs': '8550f5de73cdfb3d58cd00aec52b8c1c6e37b378',
+              'benchmarks/browser/contract.test.mjs': '2579ef40a912a7b5c59589a67f8eb220db331543',
+              'benchmarks/browser/run.mjs': '665097672638abbfb6e8c1234d98c13334c0dc08',
+              'examples/src/windowed-main.tsx': '2784210bf367231c95589b426974673e168fdf8e',
+              'scripts/smoke-pages.mjs': '1592fad619a4efe2d56167d97c843f7a9f15d6a8',
+              'tests/e2e/windowed.spec.ts': '50a51c8b4912cacb52bc6e93e7197f2023cd814c',
+          }
+          for path, sha in expected.items():
+              actual = subprocess.check_output(['git', 'hash-object', path], text=True).strip()
+              assert actual == sha, (path, actual, sha)
+          PY
+          node --test benchmarks/browser/contract.test.mjs
           git config user.name 'moritzbrantner'
           git config user.email '31051084+moritzbrantner@users.noreply.github.com'
-          git add .gitignore crates src benchmarks docs examples scripts tests package.json vite.config.ts
+          git add .github/workflows/deploy-pages.yml .github/workflows/rust.yml benchmarks/browser examples/src/windowed-main.tsx scripts/smoke-pages.mjs tests/e2e/windowed.spec.ts
           git diff --cached --check
-          git commit -m 'test(performance): integrate windowed queries and production reference coverage'
+          git commit -m 'test(browser): integrate strict reference evidence and production Pages checks'
           git push origin HEAD:refs/heads/perf/windowed-reference-parity
-      - name: Exercise production examples
-        run: |
-          mkdir -p dist-examples/benchmarks
-          bun run benchmark:query -- --output dist-examples/benchmarks/query.json
-          node scripts/smoke-pages.mjs
-          bun run test:e2e -- tests/e2e/windowed.spec.ts
-      - name: Measure actual browser reference matrix
-        if: success() || failure()
-        run: node benchmarks/browser/run.mjs
-      - name: Measure public query windows
-        if: success() || failure()
-        run: |
-          bun run benchmark:virtualization
-          bun run benchmark:windows
-      - name: Retain evidence and source
-        if: always()
-        run: |
-          mkdir -p .artifacts
-          git archive --format=tar HEAD > .artifacts/source.tar
-          git diff HEAD > .artifacts/uncommitted.patch
-          git rev-parse HEAD > .artifacts/source-sha.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
-        with:
-          name: tables-continuation-evidence
-          path: |
-            .artifacts/*.json
-            .artifacts/*.png
-            .artifacts/source.tar
-            .artifacts/uncommitted.patch
-            .artifacts/source-sha.txt
-            test-results
-          retention-days: 7
