@@ -644,9 +644,24 @@ function normalizeCaseInsensitiveText(
   value: string,
   locale?: string | readonly string[],
 ): string {
-  return locale === undefined
-    ? value.toLocaleLowerCase()
-    : value.toLocaleLowerCase(normalizeLocaleInput(locale));
+  if (locale === undefined) {
+    // ASCII without capital I has locale-independent lowercase mappings. Keep
+    // Turkish/Azeri I, Unicode context rules, and explicit locale requests on
+    // the existing locale-sensitive path; do not guess the host's locale.
+    let localeIndependentAscii = true;
+    for (let index = 0; index < value.length; index++) {
+      const code = value.charCodeAt(index);
+      if (code > 0x7f || code === 0x49) {
+        localeIndependentAscii = false;
+        break;
+      }
+    }
+    if (localeIndependentAscii) {
+      return value.toLowerCase();
+    }
+    return value.toLocaleLowerCase();
+  }
+  return value.toLocaleLowerCase(normalizeLocaleInput(locale));
 }
 
 function normalizeLocaleInput(locale?: string | readonly string[]) {

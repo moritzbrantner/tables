@@ -1,0 +1,9 @@
+{
+  "name": "tables-reference-benchmarks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@tanstack/table-core": "8.21.3"
+  }
+}
