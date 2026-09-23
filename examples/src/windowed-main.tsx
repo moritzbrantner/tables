@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { VirtualTable, createTableWindowModel, type TableColumn } from "@moritzbrantner/tables";
 import { loadTableWasmKernel } from "@moritzbrantner/tables/wasm";
@@ -32,11 +32,12 @@ function WindowedPage() {
     window.addEventListener("popstate", onPop);
     return () => { live = false; window.removeEventListener("popstate", onPop); };
   }, []);
-  const model = useMemo(() => createTableWindowModel({ rows, columns,
+  // Query changes and kernel activation both render this page.
+  const model = createTableWindowModel({ rows, columns,
     filter: { query: view.query, queryColumnIds: ["name"] },
     sort: [{ columnId: "value", direction: view.descending ? "desc" : "asc" }],
     window: { offset: view.offset, limit: pageSize },
-  }), [view, backend]);
+  });
   const change = (patch: Partial<typeof view>) => {
     const next = { ...view, ...patch };
     const params = new URLSearchParams({ offset: String(next.offset), query: next.query, sort: next.descending ? "desc" : "asc" });

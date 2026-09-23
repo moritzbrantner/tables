@@ -6,11 +6,9 @@ import { createRows, pageSize, providers, queryFor, reference, workloads, type P
 import "../../styles.css";
 import "./page.css";
 
-declare const __REFERENCE_VERSIONS__: Record<string, string>;
+declare const tableReferenceVersions: Record<string, string>;
 const gridElement = document.getElementById("grid")!;
 const root = createRoot(gridElement);
-let probe: Probe | undefined;
-const receiveProbe = (value: Probe) => { probe = value; };
 let mounted: Provider | null = null;
 let invocation = 0;
 let busy = false;
@@ -25,24 +23,29 @@ async function render(provider: Provider, rows: Row[], query: Query, scope: Scop
     mounted = provider;
     await frame();
   }
-  probe = undefined;
+  let receiveProbe!: (value: Probe) => void;
+  let timeout = 0;
+  const ready = new Promise<Probe>((resolve, reject) => {
+    receiveProbe = (value) => {
+      void value.ready.then(() => resolve(value), reject);
+    };
+    timeout = window.setTimeout(() => reject(new Error(`${provider}: adapter did not become ready`)), 10000);
+  });
   const started = performance.now();
-  flushSync(() => root.render(<Adapter key={provider} provider={provider} rows={rows} query={query} scope={scope} probe={receiveProbe} />));
-  // AG Grid's filter API can finish asynchronously. Readiness is a real adapter
-  // signal, not a fixed sleep or network-idle wait folded into the measurement.
-  const deadline = performance.now() + 10000;
-  while (!probe) {
-    if (performance.now() > deadline) throw new Error(`${provider}: adapter did not become ready`);
+  try {
+    flushSync(() => root.render(<Adapter key={provider} provider={provider} rows={rows} query={query} scope={scope} probe={receiveProbe} />));
+    // Both React commit and asynchronous provider work signal completion.
+    // The timeout bounds failure only; successful samples never wait on it.
+    const active = await ready;
     await frame();
+    await frame();
+    const elapsed = performance.now() - started;
+    const actual = active.snapshot();
+    const mountedRows = gridElement.querySelectorAll('[role="row"]').length;
+    return { actual, mountedRows, elapsed };
+  } finally {
+    window.clearTimeout(timeout);
   }
-  const active = probe as Probe;
-  await active.ready;
-  await frame();
-  await frame();
-  const elapsed = performance.now() - started;
-  const actual = active.snapshot();
-  const mountedRows = gridElement.querySelectorAll('[role="row"]').length;
-  return { actual, mountedRows, elapsed };
 }
 
 async function run(options: { sizes?: number[]; scopes?: Scope[]; sampleCount?: number } = {}): Promise<Report> {
@@ -105,7 +108,7 @@ async function run(options: { sizes?: number[]; scopes?: Scope[]; sampleCount?: 
         }
       }
     }
-    const report: Report = { version: 1, suite: "table-browser-reference-v1", userAgent: navigator.userAgent, versions: __REFERENCE_VERSIONS__, sampleCount, results };
+    const report: Report = { version: 1, suite: "table-browser-reference-v1", userAgent: navigator.userAgent, versions: tableReferenceVersions, sampleCount, results };
     showResults(report);
     document.getElementById("status")!.textContent = `Completed. ${results.length} cases; ordered pages, total counts and DOM bounds verified after every invocation.`;
     await preview();
@@ -135,7 +138,7 @@ function showResults(report: Report) {
   document.getElementById("results")!.replaceChildren(table);
 }
 
-document.getElementById("versions")!.textContent = `Pinned: AG Grid ${__REFERENCE_VERSIONS__["ag-grid-react"]} · MUI X ${__REFERENCE_VERSIONS__["@mui/x-data-grid"]} · React ${__REFERENCE_VERSIONS__.react}`;
+document.getElementById("versions")!.textContent = `Pinned: AG Grid ${tableReferenceVersions["ag-grid-react"]} · MUI X ${tableReferenceVersions["@mui/x-data-grid"]} · React ${tableReferenceVersions.react}`;
 (document.getElementById("run") as HTMLButtonElement).onclick = async () => {
   const button = document.getElementById("run") as HTMLButtonElement;
   button.disabled = true;

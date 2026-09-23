@@ -82,7 +82,9 @@ describe("windowed model", () => {
           return new Uint32Array([rows.length, ...rows.slice(query.rowOffset, query.rowOffset + query.rowLimit).map((row) => row.id)]);
         }
       },
-      WasmVariableLayout: class {},
+      WasmVariableLayout: class {
+        constructor() { throw new Error("Query tests must not construct a variable layout"); }
+      },
       fixedVirtualRange() {},
     });
     setTableQueryKernel(kernel);

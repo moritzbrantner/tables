@@ -15,7 +15,7 @@ const output = path.join(repo, "dist-browser-references");
 export default defineConfig({
   root,
   base: "/tables/references/",
-  define: { __REFERENCE_VERSIONS__: JSON.stringify(manifest.dependencies) },
+  define: { tableReferenceVersions: JSON.stringify(manifest.dependencies) },
   build: { outDir: output, emptyOutDir: true },
   plugins: [react(), {
     name: "reference-wasm-siblings",
