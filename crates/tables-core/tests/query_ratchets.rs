@@ -290,3 +290,56 @@ fn numeric_search_preserves_display_for_extremes_and_nulls() {
         }
     }
 }
+
+#[test]
+fn sorted_edge_pages_do_not_retain_all_source_rows() {
+    for size in [1_000, 10_000, 100_000] {
+        let index = fixture(size);
+        for offset in [0, 200, size - 32] {
+            let query = TableQuery {
+                sort: vec![TableSort {
+                    column_index: 0,
+                    direction: TableSortDirection::Desc,
+                    nulls: TableNulls::Last,
+                }],
+                row_offset: offset,
+                row_limit: Some(32),
+                ..TableQuery::default()
+            };
+            let (result, allocations) = measure(|| index.query(black_box(&query)));
+            let expected = (0..size as u32)
+                .rev()
+                .skip(offset)
+                .take(32)
+                .collect::<Vec<_>>();
+            assert_eq!(result.row_indices, expected);
+            assert_eq!(result.filtered_row_count, size);
+            assert!(
+                allocations.bytes <= 4_096,
+                "{size}/{offset}: {allocations:?}"
+            );
+            assert!(result.row_indices.capacity() <= 464);
+        }
+    }
+}
+
+#[test]
+fn integer_search_matches_f64_display_without_numeric_scratch_allocations() {
+    let values = (0..10_000)
+        .map(|row| (row * 7_919) as f64 - 30_000_000.0)
+        .collect::<Vec<_>>();
+    let mut index = TableIndex::new();
+    index.add_numeric_column(values.clone(), vec![]);
+    for needle in ["0", "17", "-", "91", "+", "e", "."] {
+        let query = search(needle, vec![0]);
+        let expected = values
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| value.to_string().contains(needle))
+            .map(|(row, _)| row as u32)
+            .collect::<Vec<_>>();
+        let (result, allocations) = measure(|| index.query(black_box(&query)));
+        assert_eq!(result.row_indices, expected);
+        assert!(allocations.calls <= 3, "{needle}: {allocations:?}");
+    }
+}

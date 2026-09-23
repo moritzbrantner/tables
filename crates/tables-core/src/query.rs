@@ -1,7 +1,7 @@
 //! Table-owned filtering, search, and stable sorting kernels.
 
 use std::cmp::Ordering;
-use std::fmt::Write;
+mod optimized;
 
 /// Sort direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -257,7 +257,7 @@ impl TableIndex {
             };
         }
 
-        let prepared = PreparedQuery::new(self, query);
+        let mut prepared = PreparedQuery::new(self, query);
         // An identity window needs neither a scan nor an all-rows result buffer.
         if prepared.filters.is_empty() && prepared.search.is_none() && prepared.sort.is_empty() {
             let start = query.row_offset.min(self.row_count);
@@ -273,6 +273,15 @@ impl TableIndex {
         let needs_sort = !prepared.sort.is_empty()
             && query.row_limit != Some(0)
             && query.row_offset < self.row_count;
+        if needs_sort && let Some(limit) = query.row_limit {
+            // A wide prefix is better handled by linear selection below; small
+            // prefixes and near-end suffixes use bounded batches instead.
+            if query.row_offset.saturating_add(limit) <= self.row_count / 4
+                || query.row_offset > self.row_count / 2
+            {
+                return optimized::query_window(self.row_count, &prepared, query, limit);
+            }
+        }
         let capacity = if needs_sort {
             self.row_count
         } else {
@@ -296,6 +305,13 @@ impl TableIndex {
         }
 
         if needs_sort {
+            prepared.remove_constant_sort_columns(&rows);
+            if prepared.sort.is_empty() {
+                return TableIndexResult {
+                    filtered_row_count,
+                    row_indices: window_rows(rows, query.row_offset, query.row_limit),
+                };
+            }
             let start = query.row_offset.min(rows.len());
             let end = start
                 .saturating_add(query.row_limit.unwrap_or(rows.len()))
@@ -399,6 +415,17 @@ impl<'a> PreparedQuery<'a> {
         })
     }
 
+    fn remove_constant_sort_columns(&mut self, rows: &[u32]) {
+        let Some(first) = rows.first() else {
+            return;
+        };
+        self.sort.retain(|(column, rule)| {
+            rows.iter()
+                .skip(1)
+                .any(|row| compare_column_rows(column, *first, *row, *rule) != Ordering::Equal)
+        });
+    }
+
     fn compare_rows(&self, left: u32, right: u32) -> Ordering {
         for (column, rule) in &self.sort {
             let ordering = compare_column_rows(column, left, right, *rule);
@@ -476,11 +503,7 @@ fn search_column_matches(
 ) -> bool {
     match column {
         TableColumn::Numeric { values, validity } => numeric_value(values, validity, row_index)
-            .is_some_and(|value| {
-                numeric_text.clear();
-                write!(numeric_text, "{value}").expect("formatting into String cannot fail");
-                numeric_text.contains(needle)
-            }),
+            .is_some_and(|value| optimized::numeric_contains(value, needle, numeric_text)),
         TableColumn::Boolean { values, validity } => boolean_value(values, validity, row_index)
             .is_some_and(|value| (if value { "true" } else { "false" }).contains(needle)),
         TableColumn::String {
