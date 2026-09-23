@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("windowed queries keep URL state, global row positions and full counts", async ({ page }) => {
   await page.goto("/windowed.html?offset=100&sort=asc&query=");
-  await expect(page.getByRole("status")).toContainText("Rust/Wasm");
+  await expect(page.getByTestId("query-backend")).toContainText("Rust/Wasm · bounded query result");
   const grid = page.getByRole("grid", { name: "Windowed account results" });
   await expect(page.getByTestId("window-count")).toHaveText("100 returned · 100,000 matching · offset 100");
   await expect(grid.locator('[role="row"][aria-rowindex="102"]')).toBeVisible();

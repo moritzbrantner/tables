@@ -18,7 +18,7 @@ on:
       - "scripts/check-wasm-package.mjs"
       - "scripts/copy-wasm.mjs"
       - "src/data*.ts"
-      - "src/query-kernel.ts"
+      - "src/query-*.ts"
       - "src/react*.tsx"
       - "src/virtualization.ts"
       - "src/virtualization.test.ts"
@@ -44,7 +44,7 @@ on:
       - "scripts/check-wasm-package.mjs"
       - "scripts/copy-wasm.mjs"
       - "src/data*.ts"
-      - "src/query-kernel.ts"
+      - "src/query-*.ts"
       - "src/react*.tsx"
       - "src/virtualization.ts"
       - "src/virtualization.test.ts"
@@ -150,6 +150,9 @@ jobs:
       - name: Measure TypeScript/Wasm boundary
         run: bun run benchmark:virtualization
 
+      - name: Measure public windowed queries
+        run: bun run benchmark:windows
+
       - name: Install isolated pinned query reference
         run: npm ci --prefix benchmarks/references --ignore-scripts --no-audit --no-fund
 
@@ -169,6 +172,7 @@ jobs:
           path: |
             .artifacts/virtualization-boundary-benchmark.json
             .artifacts/table-reference-benchmark.json
+            .artifacts/table-window-query-benchmark.json
           if-no-files-found: error
           retention-days: 14
 

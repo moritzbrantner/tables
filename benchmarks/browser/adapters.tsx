@@ -43,14 +43,23 @@ function TablesAdapter({ rows, query, scope, probe }: AdapterProps) {
 
 function AgAdapter({ rows, query, scope, probe }: AdapterProps) {
   const api = useRef<GridApi<Row> | null>(null);
+  const previous = useRef({ filter: "", descending: null as boolean | null });
   const apply = () => {
     const grid = api.current;
     if (!grid) return;
-    const ready = grid.setColumnFilterModel("name", scope === "client" && query.query
-      ? { filterType: "text", type: "contains", filter: query.query } : null).then(() => {
+    const filter = scope === "client" ? query.query : "";
+    const descending = scope === "client" ? query.descending : null;
+    // Applying a page must not force a fresh filter/sort in the reference grid.
+    // Only changed commands are sent, just as controlled React props are reused.
+    const filterChanged = previous.current.filter !== filter;
+    const sortChanged = previous.current.descending !== descending;
+    previous.current = { filter, descending };
+    const filterReady = filterChanged ? grid.setColumnFilterModel("name", filter
+      ? { filterType: "text", type: "contains", filter } : null) : Promise.resolve();
+    const ready = filterReady.then(() => {
       if (grid.isDestroyed()) return;
-      grid.onFilterChanged();
-      grid.applyColumnState({ state: [{ colId: "value", sort: scope === "client" && query.descending !== null ? (query.descending ? "desc" : "asc") : null }], defaultState: { sort: null } });
+      if (filterChanged) grid.onFilterChanged();
+      if (sortChanged) grid.applyColumnState({ state: [{ colId: "value", sort: descending === null ? null : descending ? "desc" : "asc" }], defaultState: { sort: null } });
       grid.paginationGoToPage(scope === "client" ? query.page : 0);
     });
     probe({ ready, snapshot: () => {
@@ -71,10 +80,10 @@ function AgAdapter({ rows, query, scope, probe }: AdapterProps) {
 function MuiAdapter({ rows, query, scope, probe }: AdapterProps) {
   const api = useGridApiRef();
   const filterModel = useMemo(() => ({ items: scope === "client" && query.query
-    ? [{ id: 1, field: "name", operator: "contains", value: query.query }] : [] }), [scope, query]);
+    ? [{ id: 1, field: "name", operator: "contains", value: query.query }] : [] }), [scope, query.query]);
   const sortModel = useMemo(() => scope === "client" && query.descending !== null
-    ? [{ field: "value", sort: query.descending ? "desc" as const : "asc" as const }] : [], [scope, query]);
-  const paginationModel = useMemo(() => ({ page: scope === "client" ? query.page : 0, pageSize }), [scope, query]);
+    ? [{ field: "value", sort: query.descending ? "desc" as const : "asc" as const }] : [], [scope, query.descending]);
+  const paginationModel = useMemo(() => ({ page: scope === "client" ? query.page : 0, pageSize }), [scope, query.page]);
   useLayoutEffect(() => probe({ ready: Promise.resolve(), snapshot: () => {
     const ordered = gridFilteredSortedRowIdsSelector(api);
     const offset = scope === "client" ? query.page * pageSize : 0;

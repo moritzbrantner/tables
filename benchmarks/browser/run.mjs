@@ -6,6 +6,7 @@ import { cpus } from "node:os";
 import { extname, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { chromium } from "@playwright/test";
+import { validateReport } from "./contract.mjs";
 
 const { values } = parseArgs({ options: {
   root: { type: "string", default: "dist-browser-references" },
@@ -43,22 +44,8 @@ try {
     sizes: smoke ? [1000] : [1000, 10000, 100000], scopes: ["client", "window"], sampleCount: smoke ? 3 : 7,
   }), values.smoke);
   assert.deepEqual(errors, [], "Browser errors cannot be ignored by a successful timing report");
-  assert.equal(report.results.length, values.smoke ? 24 : 72);
   const pins = JSON.parse(await readFile("benchmarks/browser/package.json", "utf8")).dependencies;
-  assert.deepEqual(report.versions, pins, "The page must expose its exact pinned provider versions");
-  const violations = [];
-  for (const result of report.results) {
-    assert.equal(result.samplesMs.length, report.sampleCount);
-    assert.ok(result.samplesMs.every((sample) => Number.isFinite(sample) && sample > 0));
-    assert.ok(result.maxMountedRows >= 2 && result.maxMountedRows <= 102);
-    if (result.provider !== "tables") continue;
-    for (const provider of ["ag-grid", "mui"]) {
-      const reference = report.results.find((candidate) => candidate.provider === provider && candidate.scope === result.scope && candidate.size === result.size && candidate.workload === result.workload);
-      assert.ok(reference, "Every measured case requires all provider references");
-      const ratio = result.medianMs / reference.medianMs;
-      if (threshold !== null && ratio > threshold) violations.push({ ...result, reference: provider, ratio });
-    }
-  }
+  const violations = validateReport(report, { sizes: values.smoke ? [1000] : [1000, 10000, 100000], sampleCount: values.smoke ? 3 : 7, pins, threshold });
   const evidence = {
     ...report, createdAt: new Date().toISOString(),
     checkoutSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
@@ -77,7 +64,21 @@ try {
   console.log(JSON.stringify(evidence, null, 2));
   assert.equal(violations.length, 0, "Same-run relative timing gate exceeded");
 } finally {
-  if (page) await page.screenshot({ path: ".artifacts/browser-references.png", fullPage: true });
+  if (page) {
+    await page.screenshot({ path: ".artifacts/browser-references.png", fullPage: true });
+    await writeFile(".artifacts/browser-reference-dom.html", await page.content());
+    const layout = await page.locator("#grid").evaluate((grid) => ({
+      grid: grid.getBoundingClientRect().toJSON(),
+      elements: Array.from(grid.querySelectorAll("div")).slice(0, 40).map((element) => ({
+        className: element.className, role: element.getAttribute("role"), style: element.getAttribute("style"),
+        rect: element.getBoundingClientRect().toJSON(), display: getComputedStyle(element).display,
+      })),
+      rowClasses: Array.from(grid.querySelectorAll('[role="row"]')).reduce((counts, row) => {
+        const key = row.className; counts[key] = (counts[key] ?? 0) + 1; return counts;
+      }, {}),
+    }));
+    await writeFile(".artifacts/browser-reference-layout.json", JSON.stringify(layout, null, 2));
+  }
   await browser?.close();
   await new Promise((done) => server.close(done));
 }

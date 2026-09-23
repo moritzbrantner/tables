@@ -45,7 +45,7 @@ function WindowedPage() {
   };
   return <main className="app-shell"><ViewHeader title="Windowed queries" description="Filter and sort 100,000 source rows while transferring only the requested 100-row result window." />
     <ExampleNav page="windowed" />
-    <section className="rounded-lg border bg-white p-5"><p role="status">{backend}</p>
+    <section className="rounded-lg border bg-white p-5"><p role="status" data-testid="query-backend">{backend}</p>
       <div className="flex flex-wrap items-end gap-4 mb-4">
         <label>Search accounts<input aria-label="Search accounts" className="block border rounded p-2" value={view.query} onChange={(event) => change({ query: event.target.value, offset: 0 })} /></label>
         <label>Value order<select aria-label="Value order" className="block border rounded p-2" value={view.descending ? "desc" : "asc"} onChange={(event) => change({ descending: event.target.value === "desc", offset: 0 })}><option value="desc">Highest first</option><option value="asc">Lowest first</option></select></label>
