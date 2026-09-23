@@ -343,3 +343,112 @@ fn integer_search_matches_f64_display_without_numeric_scratch_allocations() {
         assert!(allocations.calls <= 3, "{needle}: {allocations:?}");
     }
 }
+
+#[test]
+fn prepared_pages_have_zero_scan_work_and_page_sized_allocations_at_any_depth() {
+    for size in [1_000, 10_000, 100_000] {
+        let index = fixture(size);
+        let snapshot = index.prepare_query(&TableQuery {
+            sort: vec![TableSort {
+                column_index: 0,
+                direction: TableSortDirection::Desc,
+                nulls: TableNulls::Last,
+            }],
+            // Preparation deliberately ignores the caller's transient page.
+            row_offset: 123,
+            row_limit: Some(1),
+            ..TableQuery::default()
+        });
+        assert_eq!(snapshot.filtered_row_count(), size);
+        assert_eq!(snapshot.retained_index_bytes(), size * 4);
+        drop(index); // A page cannot scan/filter/sort an index that no longer exists.
+        for offset in [0, size / 2, size - 32, size, usize::MAX] {
+            let (count, iterator_allocations) =
+                measure(|| snapshot.window_indices(offset, 32).count());
+            assert_eq!(iterator_allocations.calls, 0);
+            assert_eq!(count, size.saturating_sub(offset).min(32));
+            let (page, allocations) =
+                measure(|| snapshot.window_indices(offset, 32).collect::<Vec<_>>());
+            assert!(allocations.calls <= 1, "{allocations:?}");
+            assert!(
+                allocations.bytes <= 32 * 4,
+                "{size}/{offset}: {allocations:?}"
+            );
+            let expected: Vec<_> = (0..size as u32).rev().skip(offset).take(32).collect();
+            assert_eq!(page, expected);
+        }
+    }
+}
+
+#[test]
+fn identity_preparation_does_not_materialize_the_dataset() {
+    let index = fixture(100_000);
+    let (snapshot, allocations) = measure(|| index.prepare_query(&TableQuery::default()));
+    assert_eq!(allocations.calls, 0);
+    assert_eq!(snapshot.retained_index_bytes(), 0);
+    assert_eq!(snapshot.filtered_row_count(), 100_000);
+    assert_eq!(
+        snapshot
+            .window_indices(99_990, usize::MAX)
+            .collect::<Vec<_>>(),
+        (99_990..100_000).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn prepared_query_preserves_nulls_ties_unicode_and_snapshot_isolation() {
+    let mut index = TableIndex::new();
+    index.add_string_column(
+        vec![
+            "Äpfel".into(),
+            "Other".into(),
+            "ÄPFEL".into(),
+            "Äpfel".into(),
+            "Äpfel".into(),
+        ],
+        vec![],
+    );
+    index.add_numeric_column(vec![0.0, 0.0, -0.0, 7.0, 7.0], vec![1, 1, 1, 0, 1]);
+    for direction in [TableSortDirection::Asc, TableSortDirection::Desc] {
+        for nulls in [TableNulls::First, TableNulls::Last] {
+            let query = TableQuery {
+                search: Some(TableSearch {
+                    case_sensitive: false,
+                    column_indices: vec![0],
+                    query: "ÄPF".into(),
+                }),
+                sort: vec![TableSort {
+                    column_index: 1,
+                    direction,
+                    nulls,
+                }],
+                ..TableQuery::default()
+            };
+            let full = index.query(&query);
+            let snapshot = index.prepare_query(&query);
+            assert_eq!(snapshot.filtered_row_count(), 4);
+            assert_eq!(snapshot.retained_index_bytes(), 16);
+            for offset in [0, 1, 3, 4, usize::MAX] {
+                for limit in [0, 1, 2, usize::MAX] {
+                    assert_eq!(
+                        snapshot.window_indices(offset, limit).collect::<Vec<_>>(),
+                        full.row_indices
+                            .iter()
+                            .copied()
+                            .skip(offset)
+                            .take(limit)
+                            .collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
+    }
+    let snapshot = index.prepare_query(&TableQuery::default());
+    index.add_numeric_column(vec![1.0; 100], vec![]);
+    assert_eq!(index.row_count(), 100);
+    assert_eq!(snapshot.filtered_row_count(), 5);
+    assert_eq!(
+        snapshot.window_indices(0, 100).collect::<Vec<_>>(),
+        vec![0, 1, 2, 3, 4]
+    );
+}

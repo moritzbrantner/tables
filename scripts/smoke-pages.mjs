@@ -41,9 +41,11 @@ try {
   assert.ok(wasmResponses.includes(200), "The built Pages site must actually load its Wasm binary");
   await page.screenshot({ path: ".artifacts/pages-smoke.png", fullPage: true });
   await page.goto(`http://127.0.0.1:${server.address().port}/tables/windowed.html?offset=100&sort=asc`);
-  await expect(page.getByTestId("query-backend")).toContainText("Rust/Wasm · bounded query result");
+  await expect(page.getByTestId("query-backend")).toHaveText("Rust/Wasm · prepared query session");
   await expect(page.getByTestId("window-count")).toHaveText("100 returned · 100,000 matching · offset 100");
+  const revision = await page.getByTestId("query-backend").getAttribute("data-query-revision");
   await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page.getByTestId("query-backend")).toHaveAttribute("data-query-revision", revision);
   await expect(page).toHaveURL(/offset=200/);
   await page.getByRole("textbox", { name: "Search accounts" }).fill("Account 17");
   await expect(page.getByTestId("window-count")).toHaveText("100 returned · 5,550 matching · offset 0");

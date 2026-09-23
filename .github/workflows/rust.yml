@@ -153,6 +153,17 @@ jobs:
       - name: Measure public windowed queries
         run: bun run benchmark:windows
 
+      - name: Measure explicit query reuse and cold bridge preparation
+        env:
+          TABLES_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node --test benchmarks/query-reuse-contract.test.mjs
+          git fetch --no-tags --depth=1 origin 87d7f6c91df5668b9512c27be5a721b44c62cd8e
+          bun run benchmark:sessions
+          bun run benchmark:preparation
+          test -s .artifacts/table-query-sessions-benchmark.json
+          test -s .artifacts/table-cold-preparation-benchmark.json
+
       - name: Install isolated pinned query reference
         run: npm ci --prefix benchmarks/references --ignore-scripts --no-audit --no-fund
 
@@ -173,6 +184,8 @@ jobs:
             .artifacts/virtualization-boundary-benchmark.json
             .artifacts/table-reference-benchmark.json
             .artifacts/table-window-query-benchmark.json
+            .artifacts/table-query-sessions-benchmark.json
+            .artifacts/table-cold-preparation-benchmark.json
           if-no-files-found: error
           retention-days: 14
 

@@ -125,6 +125,8 @@
     "verify:fast": "bun run lint && bun run check-types && bun run test",
     "build:references": "tsc -p benchmarks/browser --noEmit && vite build --config benchmarks/browser/vite.config.ts",
     "benchmark:references:browser": "node benchmarks/browser/run.mjs",
-    "benchmark:windows": "bun scripts/benchmark-query-windows.ts"
+    "benchmark:windows": "bun scripts/benchmark-query-windows.ts",
+    "benchmark:sessions": "bun scripts/benchmark-query-sessions.ts",
+    "benchmark:preparation": "bun scripts/benchmark-column-preparation.ts"
   }
 }

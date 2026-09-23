@@ -92,3 +92,5 @@ export {
   type TableWindowModel,
   type TableWindowModelOptions,
 } from "./query-window";
+
+export { createTableQuerySession, type TableQuerySession } from "./query-session";

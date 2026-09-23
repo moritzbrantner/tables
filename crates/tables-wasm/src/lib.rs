@@ -7,7 +7,7 @@ use js_sys::{Float64Array, Uint8Array};
 use serde::Deserialize;
 use tables_core::query::{
     TableFilter, TableFilterOperator, TableFilterValue, TableIndex as CoreTableIndex, TableNulls,
-    TableQuery, TableSearch, TableSort, TableSortDirection,
+    TableQuery, TableQuerySnapshot, TableSearch, TableSort, TableSortDirection,
 };
 use tables_core::{
     FixedVirtualRangeOptions, VariableLayout as CoreVariableLayout, VariableVirtualRangeOptions,
@@ -132,6 +132,15 @@ impl WasmTableIndex {
         Ok(self.inner.add_string_column(values, validity))
     }
 
+    /// Prepares a full immutable result in Rust without transferring all indices.
+    #[wasm_bindgen(js_name = prepareQuery)]
+    pub fn prepare_query(&self, query: JsValue) -> Result<WasmTableQuerySnapshot, JsValue> {
+        let query: WasmTableQuery = serde_wasm_bindgen::from_value(query).map_err(into_js_error)?;
+        Ok(WasmTableQuerySnapshot {
+            inner: self.inner.prepare_query(&query.into_core()),
+        })
+    }
+
     /// Executes one direct table query and returns packed source-index evidence.
     ///
     /// The first `u32` is the filtered row count. Remaining values are source
@@ -144,6 +153,37 @@ impl WasmTableIndex {
         packed.push(result.filtered_row_count.min(u32::MAX as usize) as u32);
         packed.extend(result.row_indices);
         Ok(packed.into_boxed_slice())
+    }
+}
+
+/// Owned query result: independent of the index and safe across index eviction.
+#[wasm_bindgen]
+pub struct WasmTableQuerySnapshot {
+    inner: TableQuerySnapshot,
+}
+
+#[wasm_bindgen]
+impl WasmTableQuerySnapshot {
+    /// Complete match count, available without copying the result.
+    #[wasm_bindgen(getter, js_name = filteredRowCount)]
+    pub fn filtered_row_count(&self) -> usize {
+        self.inner.filtered_row_count()
+    }
+
+    /// Native source-index storage retained by this snapshot.
+    #[wasm_bindgen(getter, js_name = retainedIndexBytes)]
+    pub fn retained_index_bytes(&self) -> usize {
+        self.inner.retained_index_bytes()
+    }
+
+    /// Copies only this page across the Wasm boundary, with a match-count header.
+    #[wasm_bindgen(js_name = queryWindow)]
+    pub fn query_window(&self, offset: usize, limit: usize) -> Box<[u32]> {
+        let indices = self.inner.window_indices(offset, limit);
+        let mut packed = Vec::with_capacity(indices.len().saturating_add(1));
+        packed.push(self.inner.filtered_row_count().min(u32::MAX as usize) as u32);
+        packed.extend(indices);
+        packed.into_boxed_slice()
     }
 }
 

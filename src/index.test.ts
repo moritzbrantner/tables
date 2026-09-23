@@ -16,6 +16,7 @@ const expectedRuntimeExports = [
   "createTableColumnDefHelper",
   "createTableColumnHelper",
   "createTableModel",
+  "createTableQuerySession",
   "createTableWindowModel",
   "createTableServerQueryKey",
   "createTableServerRequest",

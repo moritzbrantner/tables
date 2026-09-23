@@ -149,3 +149,34 @@ and `performance`-labelled PR runs execute all 1k/10k/100k cases. Both use the
 production build at its real `/tables/references/` path. Timings are descriptive
 unless an explicit controlled-run `--max-ratio` threshold is supplied; parity and
 DOM work limits always fail closed.
+
+## Repeated paging: explicit prepared sessions
+
+`createTableWindowModel` remains the low-retention choice for one-off windows. When a view repeatedly browses the **same immutable rows and fixed query**, use a session instead:
+
+```ts
+import { createTableQuerySession } from "@moritzbrantner/tables/data";
+
+const session = createTableQuerySession({ rows, columns, filter, sort });
+try {
+  const first = session.getWindow({ offset: 0, limit: 100 });
+  const middle = session.getWindow({ offset: 50_000, limit: 100 });
+  // Pass each page's rows, full counts, and rowIndexOffset to manual VirtualTable.
+} finally {
+  session.dispose();
+}
+```
+
+A session evaluates its query once. The current Rust/Wasm kernel owns the complete matching source-index order; page reads allocate/transfer only the requested indices. Arbitrary middle and late pages do not scan rows or sort again. The native snapshot does not borrow the column index, so schema-cache eviction cannot invalidate an active session. Identity queries retain no native source-index buffer.
+
+This is an explicit time/memory tradeoff, **not a free cache**: preparation pays full filtering/sorting and generally retains **4 bytes per matching row** in Rust, in addition to the existing column index. The session also holds the caller's immutable row snapshot so it can resolve returned source indices. A single bounded query can be cheaper than preparing an entire result. `benchmark:sessions` reports preparation separately, times five page reads against five one-off window queries in the same run, and estimates the observed break-even number of page reads rather than hiding startup cost.
+
+Create a new session when rows, schema, filter, sort or locale changes; dispose the old one after its replacement has been created successfully. Input rows/column definitions must not be mutated in place. Filter and sort descriptors are evaluated at creation; later edits do not mutate the session. Changing the globally active kernel does not change an existing session. Disposal is idempotent; reads after disposal throw. Locale/callback and older custom-kernel paths preserve existing full-model semantics, materializing once per session rather than once per page. Older generated Wasm modules retain one copied source-index result in JavaScript as a compatibility path.
+
+Keep session ownership outside React's render cycle, or create and dispose it within the **same** effect lifetime. Do not dispose a `useMemo`-created native handle from an effect cleanup: development Strict Mode can clean up and restart that effect while retaining the memoized handle. The windowed example uses a command-driven controller, explicitly replaces/disposes sessions on query/backend changes, and lets React render independent page results. Its URL-backed execution selector compares prepared sessions with one-off windows. Browser work ratchets assert that page navigation leaves the query revision unchanged in prepared mode.
+
+## Cold column materialization
+
+Declared number/date/boolean columns now write directly to their typed values and validity buffers; declared string/JSON columns build only the array needed by the string ABI. Accessors are called once per present source row. Sparse-array holes, invalid/nonfinite values, signed zero, and source accessor positions retain their previous transport semantics. Unspecified types still use first-non-null inference, and custom sort-accessor types remain independent of the display type.
+
+`benchmark:preparation` compares the actual bridge from merged commit `87d7f6c` with the current bridge in one process using the **same release Wasm binary**. Historical bridge bytes are checked against their Git blob identity. The workload uses fresh immutable row-array identities, all-column search, three dataset sizes and both narrow/wide declared schemas. Fixture creation and GC are excluded; materialization, native indexing/querying and result transfer are included. This isolates the adapter change without presenting a synthetic mapper microbenchmark as end-to-end performance.
