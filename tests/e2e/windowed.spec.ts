@@ -18,6 +18,10 @@ test("windowed queries keep URL state, global row positions and full counts", as
   await expect(page).toHaveURL(/sort=desc/);
   await expect(grid.locator('[role="row"][aria-rowindex="2"]')).toBeVisible();
   await page.screenshot({ path: ".artifacts/windowed-queries.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("textbox", { name: "Search accounts" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: ".artifacts/windowed-queries-mobile.png", fullPage: true });
   await page.getByRole("textbox", { name: "Search accounts" }).fill("no-such-account");
   await expect(page.getByTestId("window-count")).toHaveText("0 returned · 0 matching · offset 0");
   await expect(page.getByRole("button", { name: "Next page" })).toBeDisabled();

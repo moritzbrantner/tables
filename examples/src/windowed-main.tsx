@@ -4,8 +4,10 @@ import { VirtualTable, createTableWindowModel, type TableColumn } from "@moritzb
 import { loadTableWasmKernel } from "@moritzbrantner/tables/wasm";
 import { Button, ViewHeader } from "./demo-ui";
 import { ExampleNav } from "./playground/example-nav";
+import { TablePanel } from "./playground/table-panel";
 import "../../styles.css";
 import "./styles.css";
+import "./windowed.css";
 
 type Row = { id: number; name: string; value: number };
 const rows: Row[] = Array.from({ length: 100000 }, (_, id) => ({ id: id + 1, name: `Account ${id % 2000}`, value: (id * 7919) % 100000 }));
@@ -44,19 +46,40 @@ function WindowedPage() {
     history.pushState(null, "", `?${params}`);
     setView(next);
   };
-  return <main className="app-shell"><ViewHeader title="Windowed queries" description="Filter and sort 100,000 source rows while transferring only the requested 100-row result window." />
-    <ExampleNav page="windowed" />
-    <section className="rounded-lg border bg-white p-5"><p role="status" data-testid="query-backend">{backend}</p>
-      <div className="flex flex-wrap items-end gap-4 mb-4">
-        <label>Search accounts<input aria-label="Search accounts" className="block border rounded p-2" value={view.query} onChange={(event) => change({ query: event.target.value, offset: 0 })} /></label>
-        <label>Value order<select aria-label="Value order" className="block border rounded p-2" value={view.descending ? "desc" : "asc"} onChange={(event) => change({ descending: event.target.value === "desc", offset: 0 })}><option value="desc">Highest first</option><option value="asc">Lowest first</option></select></label>
-        <Button disabled={model.rowIndexOffset === 0} onClick={() => change({ offset: Math.max(0, model.rowIndexOffset - pageSize) })}>Previous page</Button>
-        <Button disabled={model.rowIndexOffset + model.rows.length >= model.filteredRowCount} onClick={() => change({ offset: model.rowIndexOffset + pageSize })}>Next page</Button>
-      </div>
-      <p data-testid="window-count">{model.rows.length} returned · {model.filteredRowCount.toLocaleString()} matching · offset {model.rowIndexOffset.toLocaleString()}</p>
-      <VirtualTable ariaLabel="Windowed account results" columns={columns} rows={model.rows} rowKey={rowKey} mode="manual" height={440} rowHeight={32}
-        totalRowCount={model.totalRowCount} filteredRowCount={model.filteredRowCount} sortedRowCount={model.sortedRowCount} rowIndexOffset={model.rowIndexOffset} />
-      <p>Counts refer to the full matching dataset. Row positions remain global. URL parameters retain the query, sort direction and result offset.</p>
-    </section></main>;
+  return <main className="app-shell windowed-shell">
+    <header className="site-header">
+      <a className="site-header__brand" href="./">@moritzbrantner/tables</a>
+      <ExampleNav page="windowed" />
+    </header>
+    <ViewHeader className="hero" eyebrow="Bounded results" title="Windowed queries"
+      description="Filter and sort 100,000 source rows while transferring only the requested 100-row result window." />
+    <div className="content-grid windowed-content">
+      <TablePanel title="Account results" description="Query the complete dataset, then render only the requested page.">
+        <p className="benchmark-environment" role="status" data-testid="query-backend">{backend}</p>
+        <div className="windowed-toolbar">
+          <label className="search-control windowed-search">Search accounts
+            <input aria-label="Search accounts" className="demo-search-field" value={view.query}
+              onChange={(event) => change({ query: event.target.value, offset: 0 })} />
+          </label>
+          <label className="search-control">Value order
+            <select aria-label="Value order" className="demo-select" value={view.descending ? "desc" : "asc"}
+              onChange={(event) => change({ descending: event.target.value === "desc", offset: 0 })}>
+              <option value="desc">Highest first</option><option value="asc">Lowest first</option>
+            </select>
+          </label>
+          <div className="benchmark-actions">
+            <Button disabled={model.rowIndexOffset === 0}
+              onClick={() => change({ offset: Math.max(0, model.rowIndexOffset - pageSize) })}>Previous page</Button>
+            <Button disabled={model.rowIndexOffset + model.rows.length >= model.filteredRowCount}
+              onClick={() => change({ offset: model.rowIndexOffset + pageSize })}>Next page</Button>
+          </div>
+        </div>
+        <p className="windowed-count" data-testid="window-count">{model.rows.length} returned · {model.filteredRowCount.toLocaleString()} matching · offset {model.rowIndexOffset.toLocaleString()}</p>
+        <VirtualTable ariaLabel="Windowed account results" columns={columns} rows={model.rows} rowKey={rowKey} mode="manual" height={440} rowHeight={32}
+          totalRowCount={model.totalRowCount} filteredRowCount={model.filteredRowCount} sortedRowCount={model.sortedRowCount} rowIndexOffset={model.rowIndexOffset} />
+        <p className="benchmark-footnote">Counts refer to the full matching dataset. Row positions remain global. URL parameters retain the query, sort direction and result offset.</p>
+      </TablePanel>
+    </div>
+  </main>;
 }
 createRoot(document.getElementById("root")!).render(<WindowedPage />);
