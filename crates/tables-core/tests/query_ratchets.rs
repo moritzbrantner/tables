@@ -152,6 +152,9 @@ fn search_allocations_do_not_scale_with_row_count() {
 fn unsorted_pages_allocate_for_the_page_not_the_dataset() {
     for size in [1_000, 10_000, 100_000] {
         let index = fixture(size);
+        // These are steady-state page-allocation ratchets. First-use string
+        // normalization is index preparation and is measured separately.
+        black_box(index.query(&search("account", vec![2])));
         for mut query in [TableQuery::default(), search("account", vec![0, 1, 2])] {
             query.row_offset = 200;
             query.row_limit = Some(32);
@@ -170,6 +173,9 @@ fn unsorted_pages_allocate_for_the_page_not_the_dataset() {
 fn membership_preparation_and_sort_do_not_reintroduce_row_allocations() {
     let size = 100_000;
     let index = fixture(size);
+    // Keep this ratchet focused on repeated filter/sort work. The derived
+    // lowercase string cache is one-time index preparation.
+    black_box(index.query(&search("account", vec![2])));
     let query = TableQuery {
         filters: vec![TableFilter {
             column_index: 2,
