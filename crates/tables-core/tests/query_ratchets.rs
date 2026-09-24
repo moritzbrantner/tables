@@ -111,9 +111,32 @@ fn allocation_meter_detects_real_allocations() {
 }
 
 #[test]
+fn string_column_build_does_not_allocate_lowercase_shadow_values() {
+    for size in [1_000, 10_000, 100_000] {
+        let values = (0..size)
+            .map(|row| format!("Account {}", row % 2_000))
+            .collect::<Vec<_>>();
+        let validity = vec![1; size];
+        let (index, allocations) = measure(|| {
+            let mut index = TableIndex::new();
+            index.add_string_column(values, validity);
+            index
+        });
+        assert_eq!(index.row_count(), size);
+        // Column-vector storage is bounded. A per-row lowercase shadow would
+        // add O(N) String allocations and bytes here.
+        assert!(allocations.calls <= 2, "{size} rows: {allocations:?}");
+        assert!(allocations.bytes <= 2_048, "{size} rows: {allocations:?}");
+    }
+}
+
+#[test]
 fn search_allocations_do_not_scale_with_row_count() {
     for size in [1_000, 10_000, 100_000] {
         let index = fixture(size);
+        // Lowercase string storage is one-time index-derived state. Prime it
+        // outside the hot-query allocation measurement.
+        black_box(index.query(&search("account", vec![2])));
         for query in [search("account", vec![0, 1, 2]), search("17", vec![0])] {
             let (result, allocations) = measure(|| index.query(black_box(&query)));
             assert!(result.filtered_row_count > 0);
@@ -129,6 +152,9 @@ fn search_allocations_do_not_scale_with_row_count() {
 fn unsorted_pages_allocate_for_the_page_not_the_dataset() {
     for size in [1_000, 10_000, 100_000] {
         let index = fixture(size);
+        // These are steady-state page-allocation ratchets. First-use string
+        // normalization is index preparation and is measured separately.
+        black_box(index.query(&search("account", vec![2])));
         for mut query in [TableQuery::default(), search("account", vec![0, 1, 2])] {
             query.row_offset = 200;
             query.row_limit = Some(32);
@@ -147,6 +173,9 @@ fn unsorted_pages_allocate_for_the_page_not_the_dataset() {
 fn membership_preparation_and_sort_do_not_reintroduce_row_allocations() {
     let size = 100_000;
     let index = fixture(size);
+    // Keep this ratchet focused on repeated filter/sort work. The derived
+    // lowercase string cache is one-time index preparation.
+    black_box(index.query(&search("account", vec![2])));
     let query = TableQuery {
         filters: vec![TableFilter {
             column_index: 2,

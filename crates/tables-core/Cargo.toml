@@ -17,3 +17,8 @@ harness = false
 [[bench]]
 name = "virtualization"
 harness = false
+
+
+[[bench]]
+name = "string_index"
+harness = false
