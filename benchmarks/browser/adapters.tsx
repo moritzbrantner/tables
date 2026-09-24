@@ -3,7 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type GridApi } from "ag-grid-community";
 import { DataGrid, gridFilteredSortedRowIdsSelector, useGridApiRef, type GridColDef } from "@mui/x-data-grid";
 import { VirtualTable } from "../../src/react";
-import { createTableQuerySession } from "../../src/data";
+import { createTableQuerySession, type TableQuerySession } from "../../src/data";
 import { createTableWindowModel } from "../../src/query-window";
 import type { TableColumn } from "../../src/react-column";
 import type { Query, Row, Scope, Provider } from "./fixture";
@@ -31,7 +31,7 @@ export function Adapter({ provider, ...props }: AdapterProps & { provider: Provi
 let tablesSessionState: {
   rows: Row[];
   queryKey: string;
-  session: ReturnType<typeof createTableQuerySession<Row>>;
+  session: TableQuerySession<Row>;
 } | null = null;
 
 export function resetTablesAdapterQuery() {
