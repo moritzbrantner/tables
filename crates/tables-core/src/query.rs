@@ -1,6 +1,7 @@
 //! Table-owned filtering, search, and stable sorting kernels.
 
 use std::cmp::Ordering;
+use std::sync::OnceLock;
 mod optimized;
 mod snapshot;
 pub use snapshot::TableQuerySnapshot;
@@ -168,9 +169,38 @@ enum TableColumn {
     },
     String {
         values: Vec<String>,
-        normalized_values: Vec<String>,
+        normalized_values: LowercaseCache,
         validity: Vec<u8>,
     },
+}
+
+#[derive(Debug, Default)]
+struct LowercaseCache(OnceLock<Vec<String>>);
+
+impl Clone for LowercaseCache {
+    fn clone(&self) -> Self {
+        let cloned = Self::default();
+        if let Some(values) = self.0.get() {
+            let _ = cloned.0.set(values.clone());
+        }
+        cloned
+    }
+}
+
+impl PartialEq for LowercaseCache {
+    fn eq(&self, _other: &Self) -> bool {
+        // Derived cache contents are fully determined by the sibling source
+        // strings and therefore are not independent TableIndex state.
+        true
+    }
+}
+
+impl LowercaseCache {
+    fn values<'a>(&'a self, source: &[String]) -> &'a [String] {
+        self.0
+            .get_or_init(|| source.iter().map(|value| lowercase_owned(value)).collect())
+            .as_slice()
+    }
 }
 
 #[derive(Debug)]
@@ -240,11 +270,10 @@ impl TableIndex {
     pub fn add_string_column(&mut self, values: Vec<String>, validity: Vec<u8>) -> usize {
         let column_index = self.columns.len();
         self.row_count = self.row_count.max(values.len());
-        let normalized_values = values.iter().map(|value| value.to_lowercase()).collect();
         self.columns.push(TableColumn::String {
             validity: normalized_validity(validity, values.len()),
             values,
-            normalized_values,
+            normalized_values: LowercaseCache::default(),
         });
         column_index
     }
@@ -601,7 +630,7 @@ fn boolean_filter_matches(
 
 fn string_filter_matches(
     values: &[String],
-    normalized_values: &[String],
+    normalized_values: &LowercaseCache,
     validity: &[u8],
     filter: &TableFilter,
     expected: &PreparedStringFilterValue,
@@ -705,6 +734,16 @@ fn normalize_string(value: &str, case_sensitive: bool) -> String {
     if case_sensitive {
         value.to_owned()
     } else {
+        lowercase_owned(value)
+    }
+}
+
+fn lowercase_owned(value: &str) -> String {
+    if value.is_ascii() {
+        let mut normalized = value.to_owned();
+        normalized.make_ascii_lowercase();
+        normalized
+    } else {
         value.to_lowercase()
     }
 }
@@ -736,7 +775,7 @@ fn valid_string<'a>(values: &'a [String], validity: &[u8], row_index: usize) -> 
 
 fn string_value<'a>(
     values: &'a [String],
-    normalized_values: &'a [String],
+    normalized_values: &'a LowercaseCache,
     validity: &[u8],
     row_index: usize,
     case_sensitive: bool,
@@ -748,7 +787,7 @@ fn string_value<'a>(
     if case_sensitive {
         values.get(row_index).map(String::as_str)
     } else {
-        normalized_values.get(row_index).map(String::as_str)
+        normalized_values.values(values).get(row_index).map(String::as_str)
     }
 }
 
