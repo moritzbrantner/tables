@@ -499,6 +499,11 @@ function createSearch<TRow>(
     }
     seen.add(columnId);
 
+    const column = prepared.columnsById.get(columnId);
+    if (!declaredSearchColumnCanMatch(column, query)) {
+      continue;
+    }
+
     const entry = ensureIndexedColumn(prepared, rows, columnId);
     if (entry) {
       columnIndices.push(entry.columnIndex);
@@ -510,6 +515,30 @@ function createSearch<TRow>(
     columnIndices,
     query,
   };
+}
+
+function declaredSearchColumnCanMatch<TRow>(
+  column: TableDataColumn<TRow> | undefined,
+  query: string,
+): boolean {
+  const type = column?.type;
+  if (type === "number" || type === "date") {
+    for (let index = 0; index < query.length; index += 1) {
+      const code = query.charCodeAt(index);
+      const digit = code >= 0x30 && code <= 0x39;
+      if (!digit && code !== 0x2e && code !== 0x2d && code !== 0x2b && code !== 0x65 && code !== 0x45) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (type === "boolean") {
+    const needle = query.toLowerCase();
+    return "true".includes(needle) || "false".includes(needle);
+  }
+
+  return true;
 }
 
 function identityTableQueryResult(rowCount: number, window?: TableQueryWindow): TableQueryResult {
