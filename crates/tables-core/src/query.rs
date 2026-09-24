@@ -2,6 +2,8 @@
 
 use std::cmp::Ordering;
 mod optimized;
+mod snapshot;
+pub use snapshot::TableQuerySnapshot;
 
 /// Sort direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

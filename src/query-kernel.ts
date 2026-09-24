@@ -10,7 +10,20 @@ export type TableQueryResult = {
   sourceIndices: readonly number[];
 };
 
+/** Immutable query result owned by the selected kernel. Disposing is idempotent. */
+export type PreparedTableQuery = {
+  readonly filteredRowCount: number;
+  queryWindow(window: TableQueryWindow): TableQueryResult;
+  dispose(): void;
+};
+
 export type TableQueryKernel = {
+  prepareTableQuery?<TRow>(
+    rows: readonly TRow[],
+    columns: readonly TableDataColumn<TRow>[],
+    filter?: TableFilter<TRow> | null,
+    sort?: TableSortState,
+  ): PreparedTableQuery;
   queryTableWindow?<TRow>(
     rows: readonly TRow[],
     columns: readonly TableDataColumn<TRow>[],

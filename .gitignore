@@ -10,3 +10,4 @@ src/wasm/generated/
 target/
 test-results/
 *.log
+/src/.benchmark-baseline-wasm-*.ts

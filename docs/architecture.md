@@ -58,3 +58,9 @@ Editing, formulas, pivot-table behavior, spreadsheet semantics, application data
 ## Change rule
 
 Future changes must preserve these ownership boundaries or explicitly update this document in the same pull request. New features should prefer extending an existing semantic owner over adding parallel state models or processing layers.
+
+## Prepared-query lifetime
+
+`createTableQuerySession` is an optional, explicit result lifetime over immutable inputs, not a global query cache. Rust owns the immutable source-index result and full matching count. The Wasm adapter only packs requested windows; TypeScript resolves source indices against the original snapshot and controls disposal. A prepared result owns its indices independently of the column-index cache. One-off window queries remain available without imposing full-result retention on consumers that do not need repeated paging.
+
+The example's controller owns query creation/replacement/disposal at command boundaries. Page offset changes read the existing result; they are not filter/sort changes. React renders independent result windows and does not become the query or invalidation authority.

@@ -7,7 +7,7 @@ import {
   type TableSortState,
 } from "./data";
 import { validateTableQueryWindow } from "./query-window";
-import type { TableQueryKernel, TableQueryResult, TableQueryWindow } from "./query-kernel";
+import type { PreparedTableQuery, TableQueryKernel, TableQueryResult, TableQueryWindow } from "./query-kernel";
 import type {
   FixedVirtualRangeOptions,
   VariableVirtualRangeOptions,
@@ -34,7 +34,14 @@ type GeneratedVariableLayout = {
   virtualRange(overscan: number, scrollOffset: number, viewportSize: number): Float64Array;
 };
 
+type GeneratedQuerySnapshot = {
+  readonly filteredRowCount: number;
+  free(): void;
+  queryWindow(offset: number, limit: number): Uint32Array;
+};
+
 type GeneratedTableIndex = {
+  prepareQuery?(query: WasmTableQuery): GeneratedQuerySnapshot;
   addBooleanColumn(values: Uint8Array, validity: Uint8Array): number;
   addNumericColumn(values: Float64Array, validity: Uint8Array): number;
   addStringColumn(values: readonly (string | null)[]): number;
@@ -153,6 +160,9 @@ export function createTableWasmKernelFromModule(value: unknown): TableWasmKernel
         ),
       );
     },
+    prepareTableQuery(rows, columns, filter, sort = []) {
+      return prepareTableQueryWithRust(tableIndexCache, rows, columns, filter, sort);
+    },
     queryTableWindow(rows, columns, window, filter, sort = []) {
       validateTableQueryWindow(window);
       return queryTableWithRust(tableIndexCache, rows, columns, filter, sort, window);
@@ -210,6 +220,10 @@ function createPreparedTableIndexCache(module: GeneratedTablesWasmModule): Prepa
   };
 }
 
+type RustQueryPlan =
+  | { kind: "identity" | "empty" }
+  | { kind: "query"; index: GeneratedTableIndex; query: WasmTableQuery };
+
 function queryTableWithRust<TRow>(
   cache: PreparedTableIndexCache,
   rows: readonly TRow[],
@@ -218,10 +232,88 @@ function queryTableWithRust<TRow>(
   sort: TableSortState,
   window?: TableQueryWindow,
 ): TableQueryResult {
+  const plan = prepareRustQuery(cache, rows, columns, filter, sort, window);
+  if (plan.kind !== "query") {
+    return identityTableQueryResult(plan.kind === "empty" ? 0 : rows.length, window);
+  }
+  return decodeTableQueryResult(plan.index.query(plan.query), rows.length);
+}
+
+function prepareTableQueryWithRust<TRow>(
+  cache: PreparedTableIndexCache,
+  rows: readonly TRow[],
+  columns: readonly TableDataColumn<TRow>[],
+  filter: TableFilter<TRow> | null | undefined,
+  sort: TableSortState,
+): PreparedTableQuery {
+  const plan = prepareRustQuery(cache, rows, columns, filter, sort);
+  const rowCount = rows.length;
+  let snapshot: GeneratedQuerySnapshot | null = null;
+  let cached: readonly number[] | null = null;
+  let filteredRowCount: number;
+  if (plan.kind !== "query") {
+    filteredRowCount = plan.kind === "identity" ? rowCount : 0;
+  } else if (plan.index.prepareQuery) {
+    snapshot = plan.index.prepareQuery(plan.query);
+    try {
+      filteredRowCount = readIndex(snapshot.filteredRowCount, "filteredRowCount");
+      if (filteredRowCount > rowCount) throw new RangeError("Prepared match count exceeds source rows");
+    } catch (error) {
+      snapshot.free();
+      throw error;
+    }
+  } else {
+    // Older generated modules still support sessions; copy full indices once,
+    // not on every page. The current module retains them exclusively in Rust.
+    const result = decodeTableQueryResult(plan.index.query(plan.query), rowCount);
+    if (result.sourceIndices.length !== result.filteredRowCount) {
+      throw new TypeError("Prepared table query requires a complete result");
+    }
+    cached = result.sourceIndices;
+    filteredRowCount = result.filteredRowCount;
+  }
+  let disposed = false;
+  return {
+    filteredRowCount,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      const owned = snapshot;
+      snapshot = null;
+      cached = null;
+      owned?.free();
+    },
+    queryWindow(window) {
+      if (disposed) throw new Error("Prepared table query has been disposed");
+      validateTableQueryWindow(window);
+      const offset = Math.min(filteredRowCount, window.offset);
+      const limit = Math.min(filteredRowCount - offset, window.limit);
+      if (snapshot) {
+        const result = decodeTableQueryResult(snapshot.queryWindow(offset, limit), rowCount);
+        if (result.filteredRowCount !== filteredRowCount || result.sourceIndices.length !== limit) {
+          throw new TypeError("Prepared table query returned inconsistent window counts");
+        }
+        return result;
+      }
+      return cached
+        ? { filteredRowCount, sourceIndices: cached.slice(offset, offset + limit) }
+        : identityTableQueryResult(filteredRowCount, { offset, limit });
+    },
+  };
+}
+
+function prepareRustQuery<TRow>(
+  cache: PreparedTableIndexCache,
+  rows: readonly TRow[],
+  columns: readonly TableDataColumn<TRow>[],
+  filter: TableFilter<TRow> | null | undefined,
+  sort: TableSortState,
+  window?: TableQueryWindow,
+): RustQueryPlan {
   const queryText = filter?.query?.trim();
   const columnFilters = filter?.columnFilters ?? [];
   if (!queryText && columnFilters.length === 0 && sort.length === 0) {
-    return identityTableQueryResult(rows.length, window);
+    return { kind: "identity" };
   }
 
   const prepared = cache.get(rows, columns);
@@ -230,12 +322,12 @@ function queryTableWithRust<TRow>(
   for (const columnFilter of columnFilters) {
     const entry = ensureIndexedColumn(prepared, rows, columnFilter.columnId);
     if (!entry) {
-      return { filteredRowCount: 0, sourceIndices: [] };
+      return { kind: "empty" };
     }
 
     const value = prepareFilterValue(columnFilter, entry.type);
     if (!value) {
-      return { filteredRowCount: 0, sourceIndices: [] };
+      return { kind: "empty" };
     }
 
     filters.push({
@@ -262,7 +354,7 @@ function queryTableWithRust<TRow>(
   }
 
   if (filters.length === 0 && !search && wasmSort.length === 0) {
-    return identityTableQueryResult(rows.length, window);
+    return { kind: "identity" };
   }
 
   const query: WasmTableQuery = {
@@ -273,7 +365,7 @@ function queryTableWithRust<TRow>(
     sort: wasmSort,
   };
 
-  return decodeTableQueryResult(prepared.index.query(query), rows.length);
+  return { kind: "query", index: prepared.index, query };
 }
 
 function ensureIndexedColumn<TRow>(
@@ -291,13 +383,17 @@ function ensureIndexedColumn<TRow>(
     return undefined;
   }
 
-  const values = rows.map((row, rowIndex) => getColumnValue(column, row, rowIndex));
-  const type = column.type ?? inferTableColumnType(values);
-  const indexed = {
-    column,
-    columnIndex: addValuesColumn(prepared.index, values, type),
-    type,
-  } satisfies IndexedColumn<TRow>;
+  let type = column.type;
+  let columnIndex: number;
+  if (type !== undefined) {
+    columnIndex = addDeclaredColumn(prepared.index, rows, column, type);
+  } else {
+    // Inference retains single-accessor-call semantics for heterogeneous input.
+    const values = rows.map((row, rowIndex) => getColumnValue(column, row, rowIndex));
+    type = inferTableColumnType(values);
+    columnIndex = addValuesColumn(prepared.index, values, type);
+  }
+  const indexed = { column, columnIndex, type } satisfies IndexedColumn<TRow>;
   prepared.indexedById.set(columnId, indexed);
   return indexed;
 }
@@ -325,6 +421,40 @@ function ensureSortColumn<TRow>(
   const columnIndex = addValuesColumn(prepared.index, values, inferTableColumnType(values));
   prepared.sortColumnIndices.set(columnId, columnIndex);
   return columnIndex;
+}
+
+function addDeclaredColumn<TRow>(
+  index: GeneratedTableIndex,
+  rows: readonly TRow[],
+  column: TableDataColumn<TRow>,
+  type: TableColumnType,
+): number {
+  if (type === "number" || type === "date") {
+    const values = new Float64Array(rows.length);
+    const validity = new Uint8Array(rows.length);
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      // Match Array.map's treatment of holes without invoking an accessor there.
+      const value = rowIndex in rows ? getColumnValue(column, rows[rowIndex]!, rowIndex) : undefined;
+      const numeric = toNumericColumnValue(value, type);
+      values[rowIndex] = numeric;
+      validity[rowIndex] = Number.isFinite(numeric) ? 1 : 0;
+    }
+    return index.addNumericColumn(values, validity);
+  }
+  if (type === "boolean") {
+    const values = new Uint8Array(rows.length);
+    const validity = new Uint8Array(rows.length);
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const value = rowIndex in rows ? getColumnValue(column, rows[rowIndex]!, rowIndex) : undefined;
+      values[rowIndex] = value === true ? 1 : 0;
+      validity[rowIndex] = typeof value === "boolean" ? 1 : 0;
+    }
+    return index.addBooleanColumn(values, validity);
+  }
+  return index.addStringColumn(rows.map((row, rowIndex) => {
+    const value = getColumnValue(column, row, rowIndex);
+    return value == null ? null : stableStringValue(value);
+  }));
 }
 
 function addValuesColumn(
@@ -605,6 +735,9 @@ function decodeTableQueryResult(values: ArrayLike<number>, rowCount: number): Ta
   }
 
   const filteredRowCount = readIndex(values[0], "filteredRowCount");
+  if (filteredRowCount > rowCount || values.length - 1 > filteredRowCount) {
+    throw new RangeError("tables Wasm result counts exceed source or matching rows");
+  }
   const sourceIndices = new Array<number>(values.length - 1);
 
   for (let index = 1; index < values.length; index += 1) {

@@ -54,3 +54,24 @@ bun benchmarks/references/run.mjs --wasm --max-ratio 1.25
 The number is an example, not the repository's default accepted budget. A threshold must be selected from retained evidence. Invalid thresholds fail immediately; exceeded thresholds write the report and exit nonzero. CI records ratios without this noisy timing gate and hard-gates all result parity and deterministic work limits instead. Never raise a ratchet simply to make a regression green.
 
 The Rust Foundation workflow reuses its existing release Wasm build for this comparison and uploads both native and reference JSON reports. AG Grid Community and MUI X Data Grid Community have a separate production-browser harness in `benchmarks/browser`; headless results alone do not claim browser performance parity.
+
+## Prepared sessions and historical cold-bridge comparison
+
+```sh
+bun run build:wasm:node:release
+bun run benchmark:sessions
+git fetch --no-tags --depth=1 origin 87d7f6c91df5668b9512c27be5a721b44c62cd8e
+bun run benchmark:preparation
+node --test benchmarks/query-reuse-contract.test.mjs
+```
+
+The existing Wasm job reuses its release build and publishes:
+
+- `.artifacts/table-query-sessions-benchmark.json`: 24 backend/workload/size cases. Each retains seven preparation timings and seven alternating five-page batches, both prepared and one-off. Identity, sorted, filtered/sorted and empty queries are included. Full counts, global offsets and every ordered row ID are checked against an independent oracle after each invocation. Preparation is **not** included in the hot page number; it is reported alongside it with the observed break-even number of page reads. Column-index preparation has already happened for this suite.
+- `.artifacts/table-cold-preparation-benchmark.json`: six dataset-size/schema-width cases. The real historical bridge from `87d7f6c` and current bridge share the same native binary, process, fixture and query. Every invocation gets a fresh row-array identity and alternates provider order. Two warm-ups and seven measured samples are retained per provider. This suite includes cold column preparation and validates complete ordered source indices after every invocation. The temporary historical source module is removed on exit.
+
+Both reports retain source/checkout identity, binary digest, CPU/runtime metadata and correctness checksums. The report contract rejects missing or duplicate cases, incorrect medians, nonfinite samples, inconsistent provider results and altered baseline identity. Timing remains descriptive; no arbitrary wall-clock threshold is imposed on shared runners.
+
+New deterministic limits run in the normal test lanes: a native prepared-window iterator performs **zero allocations**, copying 32 rows uses at most **128 bytes**, and these bounds hold at every page depth at 1k/10k/100k rows. The test drops the source index before reading pages, proving the snapshot does not requery it. Native identity preparation retains zero index bytes. A bridge ratchet requires one preparation and exactly the requested transfers across repeated/deep page reads, including after originating-index eviction. Declared numeric/date/boolean columns must not materialize an intermediate row-value array; that ratchet demonstrably fails against the prior bridge.
+
+Sessions retain O(matching rows) source-index memory deliberately. They do not eliminate full preparation costs or turn one-off deep windows into O(page-size) queries. See `docs/performance.md` for lifecycle, React Strict Mode, compatibility and ownership constraints. The existing AG Grid/MUI browser matrix still measures the one-off window adapter; the session study and windowed demo are separate evidence, not an undisclosed reference-adapter change.

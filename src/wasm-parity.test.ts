@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 import {
   createTableModel,
+  createTableQuerySession,
   createTableWindowModel,
   type TableDataColumn,
   type TableFilter,
@@ -220,6 +221,37 @@ describe.runIf(enabled)("tables Wasm parity", () => {
       }
     }
     setTableQueryKernel(null);
+  });
+
+  test("native prepared sessions match one-off windows and survive index eviction", () => {
+    const rows = Array.from({ length: 1025 }, (_, id) => ({ id, label: `Account ${id % 19}`, score: id % 13 === 0 ? null : (id * 7919) % 47 }));
+    const columns: TableDataColumn<(typeof rows)[number]>[] = [
+      { id: "id", accessor: "id", type: "number" },
+      { id: "label", accessor: "label", type: "string" },
+      { id: "score", accessor: "score", type: "number" },
+    ];
+    setTableQueryKernel(kernel);
+    try {
+      for (const query of ["", "account 1", "missing"]) {
+        for (const direction of ["asc", "desc"] as const) {
+          const options = { rows, columns, filter: { query, queryColumnIds: ["label"] }, sort: [{ columnId: "score", direction }] };
+          const full = createTableModel(options);
+          const session = createTableQuerySession(options);
+          // Free the originating prepared column index via its bounded schema cache.
+          for (let schema = 0; schema < 5; schema++) kernel.queryTable(rows, [...columns], options.filter, options.sort);
+          for (const offset of [0, 1, 200, 500, 1000, Number.MAX_SAFE_INTEGER]) {
+            for (const limit of [0, 1, 32, Number.MAX_SAFE_INTEGER]) {
+              const page = session.getWindow({ offset, limit });
+              expect(page.rows).toEqual(full.rows.slice(offset, Math.min(full.rows.length, offset + limit)));
+              expect(page.filteredRowCount).toBe(full.filteredRowCount);
+              expect(page.rowIndexOffset).toBe(Math.min(offset, full.filteredRowCount));
+            }
+          }
+          session.dispose(); session.dispose();
+          expect(() => session.getWindow({ offset: 0, limit: 1 })).toThrow("disposed");
+        }
+      }
+    } finally { setTableQueryKernel(null); }
   });
 
 });
