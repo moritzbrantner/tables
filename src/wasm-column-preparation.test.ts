@@ -81,4 +81,44 @@ describe("declared-column materialization", () => {
     kernel.queryTable(rows, [{ ...columns[0]!, type: "string", sortAccessor: (row) => Number(row.value) }], null, [{ columnId: "value", direction: "desc" }]);
     expect(captures[1]).toEqual({ type: "numeric", values: [0, 23, 12], validity: [1, 1, 1] });
   });
+
+  it("skips declared search columns that cannot match before evaluating their accessors", () => {
+    const rows = Array.from({ length: 10_000 }, (_, i) => ({
+      createdAt: new Date(i),
+      enabled: i % 2 === 0,
+      name: `Account ${i}`,
+      value: i,
+    }));
+    const numberAccessor = vi.fn((row: (typeof rows)[number]) => row.value);
+    const dateAccessor = vi.fn((row: (typeof rows)[number]) => row.createdAt);
+    const booleanAccessor = vi.fn((row: (typeof rows)[number]) => row.enabled);
+    const stringAccessor = vi.fn((row: (typeof rows)[number]) => row.name);
+    const columns: TableDataColumn<(typeof rows)[number]>[] = [
+      { id: "value", accessor: numberAccessor, type: "number" },
+      { id: "createdAt", accessor: dateAccessor, type: "date" },
+      { id: "enabled", accessor: booleanAccessor, type: "boolean" },
+      { id: "name", accessor: stringAccessor, type: "string" },
+    ];
+    const { module, captures } = captureModule();
+    const kernel = createTableWasmKernelFromModule(module);
+
+    kernel.queryTable(rows, columns, { query: "account" });
+    expect(numberAccessor).not.toHaveBeenCalled();
+    expect(dateAccessor).not.toHaveBeenCalled();
+    expect(booleanAccessor).not.toHaveBeenCalled();
+    expect(stringAccessor).toHaveBeenCalledTimes(rows.length);
+    expect(captures.map((capture) => capture.type)).toEqual(["string"]);
+
+    kernel.queryTable(rows, columns, { query: "17" });
+    expect(numberAccessor).toHaveBeenCalledTimes(rows.length);
+    expect(dateAccessor).toHaveBeenCalledTimes(rows.length);
+    expect(booleanAccessor).not.toHaveBeenCalled();
+    expect(stringAccessor).toHaveBeenCalledTimes(rows.length);
+    expect(captures.map((capture) => capture.type)).toEqual(["string", "numeric", "numeric"]);
+
+    kernel.queryTable(rows, columns, { query: "TRUE" });
+    expect(booleanAccessor).toHaveBeenCalledTimes(rows.length);
+    expect(captures.map((capture) => capture.type)).toEqual(["string", "numeric", "numeric", "boolean"]);
+  });
+
 });
