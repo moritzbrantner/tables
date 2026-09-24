@@ -3,6 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type GridApi } from "ag-grid-community";
 import { DataGrid, gridFilteredSortedRowIdsSelector, useGridApiRef, type GridColDef } from "@mui/x-data-grid";
 import { VirtualTable } from "../../src/react";
+import { createTableQuerySession } from "../../src/data";
 import { createTableWindowModel } from "../../src/query-window";
 import type { TableColumn } from "../../src/react-column";
 import type { Query, Row, Scope, Provider } from "./fixture";
@@ -28,12 +29,28 @@ export function Adapter({ provider, ...props }: AdapterProps & { provider: Provi
 }
 
 function TablesAdapter({ rows, query, scope, probe }: AdapterProps) {
-  const model = useMemo(() => createTableWindowModel({
-    rows, columns: tableColumns,
-    filter: scope === "client" ? { query: query.query, queryColumnIds: ["name"] } : null,
-    sort: scope === "client" && query.descending !== null ? [{ columnId: "value", direction: query.descending ? "desc" : "asc" }] : [],
-    window: { offset: scope === "client" ? query.page * pageSize : 0, limit: pageSize },
-  }), [rows, query, scope]);
+  // Match the reference grids' lifetime: changing pages reuses the current
+  // filter/sort result instead of rebuilding it. Query changes still prepare a
+  // new session and therefore remain fully represented in their workloads.
+  const session = useMemo(() => scope === "client" ? createTableQuerySession({
+    rows,
+    columns: tableColumns,
+    filter: { query: query.query, queryColumnIds: ["name"] },
+    sort: query.descending !== null
+      ? [{ columnId: "value", direction: query.descending ? "desc" : "asc" }]
+      : [],
+  }) : null, [rows, scope, query.query, query.descending]);
+  useLayoutEffect(() => () => session?.dispose(), [session]);
+
+  const model = useMemo(() => session
+    ? session.getWindow({ offset: query.page * pageSize, limit: pageSize })
+    : createTableWindowModel({
+        rows,
+        columns: tableColumns,
+        filter: null,
+        sort: [],
+        window: { offset: 0, limit: pageSize },
+      }), [rows, query.page, session]);
   useLayoutEffect(() => probe({ ready: Promise.resolve(), snapshot: () => ({ ids: model.rows.map(getRowKey), count: model.filteredRowCount }) }), [model, probe]);
   return <VirtualTable columns={tableColumns} rows={model.rows} rowKey={getRowKey} mode="manual"
     ariaLabel="Tables reference grid" height={400} rowHeight={32} overscan={4}
