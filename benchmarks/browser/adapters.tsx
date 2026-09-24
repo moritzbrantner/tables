@@ -3,6 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type GridApi } from "ag-grid-community";
 import { DataGrid, gridFilteredSortedRowIdsSelector, useGridApiRef, type GridColDef } from "@mui/x-data-grid";
 import { VirtualTable } from "../../src/react";
+import { createTableQuerySession, type TableQuerySession } from "../../src/data";
 import { createTableWindowModel } from "../../src/query-window";
 import type { TableColumn } from "../../src/react-column";
 import type { Query, Row, Scope, Provider } from "./fixture";
@@ -27,13 +28,54 @@ export function Adapter({ provider, ...props }: AdapterProps & { provider: Provi
   return <TablesAdapter {...props} />;
 }
 
+let tablesSessionState: {
+  rows: Row[];
+  queryKey: string;
+  session: TableQuerySession<Row>;
+} | null = null;
+
+export function resetTablesAdapterQuery() {
+  tablesSessionState?.session.dispose();
+  tablesSessionState = null;
+}
+
+function readTablesModel(rows: Row[], query: Query, scope: Scope) {
+  if (scope !== "client") {
+    resetTablesAdapterQuery();
+    return createTableWindowModel({
+      rows,
+      columns: tableColumns,
+      filter: null,
+      sort: [],
+      window: { offset: 0, limit: pageSize },
+    });
+  }
+
+  const queryKey = JSON.stringify([query.query, query.descending]);
+  if (tablesSessionState?.rows !== rows || tablesSessionState.queryKey !== queryKey) {
+    const next = createTableQuerySession({
+      rows,
+      columns: tableColumns,
+      filter: { query: query.query, queryColumnIds: ["name"] },
+      sort: query.descending !== null
+        ? [{ columnId: "value", direction: query.descending ? "desc" : "asc" }]
+        : [],
+    });
+    const previous = tablesSessionState;
+    tablesSessionState = { rows, queryKey, session: next };
+    previous?.session.dispose();
+  }
+
+  return tablesSessionState.session.getWindow({
+    offset: query.page * pageSize,
+    limit: pageSize,
+  });
+}
+
 function TablesAdapter({ rows, query, scope, probe }: AdapterProps) {
-  const model = useMemo(() => createTableWindowModel({
-    rows, columns: tableColumns,
-    filter: scope === "client" ? { query: query.query, queryColumnIds: ["name"] } : null,
-    sort: scope === "client" && query.descending !== null ? [{ columnId: "value", direction: query.descending ? "desc" : "asc" }] : [],
-    window: { offset: scope === "client" ? query.page * pageSize : 0, limit: pageSize },
-  }), [rows, query, scope]);
+  // Query ownership deliberately lives outside React effects. Page changes read
+  // the retained result; filter/sort or row-snapshot changes replace it.
+  const model = readTablesModel(rows, query, scope);
   useLayoutEffect(() => probe({ ready: Promise.resolve(), snapshot: () => ({ ids: model.rows.map(getRowKey), count: model.filteredRowCount }) }), [model, probe]);
   return <VirtualTable columns={tableColumns} rows={model.rows} rowKey={getRowKey} mode="manual"
     ariaLabel="Tables reference grid" height={400} rowHeight={32} overscan={4}

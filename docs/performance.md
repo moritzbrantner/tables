@@ -124,11 +124,16 @@ windowed model. Its dependencies live in `benchmarks/browser`; they are not part
 of the published table package or the normal examples' JavaScript bundle.
 
 Two scopes remain separate: client query plus rendering, and supplied-window
-rendering with query work outside every provider's timer. All use 100-row pages,
-32-pixel row height, and a 400-pixel grid viewport. MUI Community's 100-row page
-limit means this is not a continuous 100k-row scrolling comparison. Mount samples
-use fresh snapshot identities; changed queries establish the opposite state
-outside timing and then measure a real state change. Provider order rotates.
+rendering with query work outside every provider's timer. In client scope the
+Tables adapter owns one prepared query session per rows/filter/sort state, so a
+page-only change reads another window without refiltering or resorting. This
+matches AG Grid's retained row-model lifetime; changed filter/sort samples still
+replace the session inside the measured interaction. All providers use 100-row
+pages, 32-pixel row height, and a 400-pixel grid viewport. MUI Community's
+100-row page limit means this is not a continuous 100k-row scrolling comparison.
+Mount samples use fresh snapshot identities; changed queries establish the
+opposite state outside timing and then measure a real state change. Provider
+order rotates.
 
 Every invocation validates the complete ordered page, matching count, first
 rendered row, and bounded mounted row count. Reports retain all samples, exact

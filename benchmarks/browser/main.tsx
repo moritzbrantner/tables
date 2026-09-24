@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { loadTableWasmKernel } from "../../src/wasm";
-import { Adapter, type Probe } from "./adapters";
+import { Adapter, resetTablesAdapterQuery, type Probe } from "./adapters";
 import { createRows, pageSize, providers, queryFor, reference, workloads, type Provider, type Query, type Row, type Scope, type Workload } from "./fixture";
 import "../../styles.css";
 import "./page.css";
@@ -19,6 +19,7 @@ export type Report = { version: number; suite: string; userAgent: string; versio
 
 async function render(provider: Provider, rows: Row[], query: Query, scope: Scope, remount: boolean) {
   if (remount || mounted !== provider) {
+    if (mounted === "tables") resetTablesAdapterQuery();
     flushSync(() => root.render(null));
     mounted = provider;
     await frame();
