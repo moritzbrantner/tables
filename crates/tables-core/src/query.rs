@@ -469,7 +469,10 @@ impl<'a> PreparedQuery<'a> {
     }
 
     fn sort_rows(&self, rows: &mut [u32]) {
-        if let [(TableColumn::Numeric { values, validity }, rule)] = self.sort.as_slice() {
+        const NUMERIC_KEY_SORT_MIN_ROWS: usize = 50_000;
+        if rows.len() >= NUMERIC_KEY_SORT_MIN_ROWS
+            && let [(TableColumn::Numeric { values, validity }, rule)] = self.sort.as_slice()
+        {
             rows.sort_unstable_by_key(|row| numeric_sort_key(values, validity, *row, *rule));
             return;
         }
