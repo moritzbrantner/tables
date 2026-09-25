@@ -608,9 +608,14 @@ function getFilterColumns<TRow>(
 }
 
 function rowsFromSourceIndices<TRow>(rows: readonly TRow[], sourceIndices: readonly number[]): TRow[] {
-  return sourceIndices
-    .map((sourceIndex) => rows[sourceIndex])
-    .filter((row): row is TRow => row !== undefined);
+  const materialized: TRow[] = [];
+  for (const sourceIndex of sourceIndices) {
+    const row = rows[sourceIndex];
+    if (row !== undefined) {
+      materialized.push(row);
+    }
+  }
+  return materialized;
 }
 
 function hasTableFilter<TRow>(filter: TableFilter<TRow> | null | undefined): boolean {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { applyTableFilter, type TableDataColumn } from "./data";
+import { applyTableFilter, createTableModel, type TableDataColumn } from "./data";
 import { setTableQueryKernel } from "./query-kernel";
 
 afterEach(() => {
@@ -24,6 +24,28 @@ describe("query work ratchets", () => {
     expect(actual).toEqual(expected);
     // Allows query preparation, not one Intl operation per row or cell.
     expect(calls).toBeLessThanOrEqual(2);
+  });
+
+  it("materializes kernel indices without a map/filter intermediate array", () => {
+    const rows = [{ id: 0 }, undefined, { id: 2 }, { id: 3 }];
+    const sourceIndices = [0, 1, 2, 3];
+    const map = vi.spyOn(sourceIndices, "map");
+    setTableQueryKernel({
+      queryTable: () => ({
+        filteredRowCount: sourceIndices.length,
+        sourceIndices,
+      }),
+    });
+
+    const model = createTableModel({
+      columns: [{ id: "id", accessor: (row) => row?.id, type: "number" }],
+      rows,
+      sort: [{ columnId: "id", direction: "asc" }],
+    });
+
+    expect(model.rows).toEqual([{ id: 0 }, { id: 2 }, { id: 3 }]);
+    expect(model.filteredRowCount).toBe(4);
+    expect(map).not.toHaveBeenCalled();
   });
 
   it("keeps Turkish capital I on the host-locale path", () => {
