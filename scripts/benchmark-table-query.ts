@@ -171,10 +171,28 @@ function measure(size: number, workload: string, operation: () => unknown): Benc
 }
 
 function referenceFunctionSort(rows: readonly BenchmarkRow[]) {
-  return [...rows].sort((left, right) =>
-    left.region.length - right.region.length
-    || (right.value % 97) - (left.value % 97)
-  );
+  const regionColumn = functionSortColumns[0]!;
+  const valueColumn = functionSortColumns[1]!;
+  const regionAccessor = regionColumn.accessor;
+  const valueAccessor = valueColumn.sortAccessor!;
+  if (typeof regionAccessor !== "function") {
+    throw new Error("function-accessor reference requires a function accessor");
+  }
+
+  return rows
+    .map((row, rowIndex) => ({ row, rowIndex }))
+    .sort((left, right) => {
+      const leftRegion = regionAccessor.call(regionColumn, left.row, left.rowIndex);
+      const rightRegion = regionAccessor.call(regionColumn, right.row, right.rowIndex);
+      const regionComparison = leftRegion - rightRegion;
+      if (regionComparison !== 0) return regionComparison;
+
+      const leftValue = valueAccessor.call(valueColumn, left.row, left.rowIndex);
+      const rightValue = valueAccessor.call(valueColumn, right.row, right.rowIndex);
+      const valueComparison = rightValue - leftValue;
+      return valueComparison || left.rowIndex - right.rowIndex;
+    })
+    .map(({ row }) => row);
 }
 
 function referenceQuery(rows: readonly BenchmarkRow[]) {
