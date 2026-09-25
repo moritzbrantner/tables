@@ -29,12 +29,13 @@ The repository separates query, browser, boundary, and external-reference timing
 - global text filtering;
 - structured filtering;
 - multi-column sorting;
+- function/`sortAccessor` sorting, paired with a comparator-time reference;
 - combined model filtering/sorting;
 - controlled table-state updates.
 
 It also records the same query semantics used by the GitHub Pages quick comparison at 1,000, 10,000, and 50,000 rows, together with the matching plain-JavaScript reference. This keeps the fallback path visible in CI even though the interactive Pages comparison loads the production Rust/Wasm query kernel before it measures.
 
-The command performs one warm-up invocation followed by five timed samples per workload and records the median plus all samples. It writes `.artifacts/table-query-benchmark.json` with Bun, OS, architecture, CPU model, and CPU-count metadata.
+The command performs one warm-up invocation followed by five timed samples per workload and records the median plus all samples. It writes `.artifacts/table-query-benchmark.json` with Bun, OS, architecture, CPU model, and CPU-count metadata. Function-backed sort keys are also protected by a deterministic work ratchet: each participating accessor is evaluated once per source row during preparation rather than once per sort comparison.
 
 `cargo bench --locked -p tables-core --bench query` separately covers eight native query workloads at 1,000, 10,000, and 100,000 rows. It writes `.artifacts/table-core-query-benchmark.json`, including seven samples per case and same-kernel full-materialization references for paged queries. Its reference is not another library. The full-result model is unchanged; the additive windowed model forwards limits into Rust.
 
