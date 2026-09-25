@@ -137,8 +137,12 @@ order rotates.
 
 Every invocation validates the complete ordered page, matching count, first
 rendered row, and bounded mounted row count. Reports retain all samples, exact
-provider pins, browser/CPU information and source identity. Two animation frames
-are included in latency; sub-frame timing differences are not pure query costs.
+provider pins, browser/CPU information and source identity. Two timing phases stay
+separate: `readyMedianMs` stops as soon as the adapter signals that query work,
+React commit, and provider-specific asynchronous work are ready; `medianMs`
+continues through two animation frames. The ready phase is useful for exposing
+sub-frame adapter/query differences that the frame-complete metric intentionally
+cannot resolve, but it is still scheduler latency rather than a pure CPU profile.
 Richer provider metadata and feature/styling differences remain relevant.
 
 ```sh
