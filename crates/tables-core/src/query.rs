@@ -782,11 +782,7 @@ fn numeric_sort_key(
 fn f64_total_order_key(value: f64) -> u64 {
     const SIGN: u64 = 1 << 63;
     let bits = value.to_bits();
-    if bits & SIGN == 0 {
-        bits ^ SIGN
-    } else {
-        !bits
-    }
+    if bits & SIGN == 0 { bits ^ SIGN } else { !bits }
 }
 
 fn numeric_value(values: &[f64], validity: &[u8], row_index: usize) -> Option<f64> {
