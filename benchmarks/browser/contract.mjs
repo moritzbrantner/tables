@@ -18,9 +18,17 @@ export function validateReport(report, { sizes, sampleCount, pins, threshold = n
     const id = key(result);
     assert.ok(expected.delete(id), `Duplicate or unexpected case ${id}`);
     assert.equal(result.samplesMs.length, sampleCount, `Wrong sample count for ${id}`);
+    assert.equal(result.readySamplesMs.length, sampleCount, `Wrong ready sample count for ${id}`);
     assert.ok(result.samplesMs.every((sample) => Number.isFinite(sample) && sample > 0), `Invalid sample for ${id}`);
+    assert.ok(result.readySamplesMs.every((sample) => Number.isFinite(sample) && sample > 0), `Invalid ready sample for ${id}`);
+    assert.ok(
+      result.readySamplesMs.every((sample, index) => sample <= result.samplesMs[index]),
+      `Provider-ready timing must precede frame-complete timing for ${id}`,
+    );
     const sorted = [...result.samplesMs].sort((left, right) => left - right);
+    const readySorted = [...result.readySamplesMs].sort((left, right) => left - right);
     assert.equal(result.medianMs, sorted[Math.floor(sorted.length / 2)], `Median does not match samples for ${id}`);
+    assert.equal(result.readyMedianMs, readySorted[Math.floor(readySorted.length / 2)], `Ready median does not match samples for ${id}`);
     assert.ok(Number.isSafeInteger(result.maxMountedRows) && result.maxMountedRows >= 2 && result.maxMountedRows <= 102, `Unbounded DOM for ${id}`);
     assert.ok(Number.isSafeInteger(result.checksum) && result.checksum >= 0, `Invalid checksum for ${id}`);
     records.set(id, result);
