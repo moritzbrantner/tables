@@ -38,7 +38,7 @@ describe("query work ratchets", () => {
     });
 
     const model = createTableModel({
-      columns: [{ id: "id", accessor: "id", type: "number" }],
+      columns: [{ id: "id", accessor: (row) => row?.id, type: "number" }],
       rows,
       sort: [{ columnId: "id", direction: "asc" }],
     });
