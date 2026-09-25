@@ -14,7 +14,18 @@ let invocation = 0;
 let busy = false;
 const frame = () => new Promise<void>((done) => requestAnimationFrame(() => done()));
 
-export type Result = { provider: Provider; scope: Scope; workload: Workload; size: number; medianMs: number; samplesMs: number[]; maxMountedRows: number; checksum: number };
+export type Result = {
+  provider: Provider;
+  scope: Scope;
+  workload: Workload;
+  size: number;
+  medianMs: number;
+  samplesMs: number[];
+  readyMedianMs: number;
+  readySamplesMs: number[];
+  maxMountedRows: number;
+  checksum: number;
+};
 export type Report = { version: number; suite: string; userAgent: string; versions: Record<string, string>; sampleCount: number; results: Result[] };
 
 async function render(provider: Provider, rows: Row[], query: Query, scope: Scope, remount: boolean) {
@@ -38,12 +49,13 @@ async function render(provider: Provider, rows: Row[], query: Query, scope: Scop
     // Both React commit and asynchronous provider work signal completion.
     // The timeout bounds failure only; successful samples never wait on it.
     const active = await ready;
+    const readyElapsed = performance.now() - started;
     await frame();
     await frame();
     const elapsed = performance.now() - started;
     const actual = active.snapshot();
     const mountedRows = gridElement.querySelectorAll('[role="row"]').length;
-    return { actual, mountedRows, elapsed };
+    return { actual, mountedRows, elapsed, readyElapsed };
   } finally {
     window.clearTimeout(timeout);
   }
@@ -64,7 +76,18 @@ async function run(options: { sizes?: number[]; scopes?: Scope[]; sampleCount?: 
       const rows = createRows(size);
       for (const scope of scopes) {
         for (const workload of workloads) {
-          const perProvider = new Map<Provider, Result>(providers.map((provider) => [provider, { provider, scope, workload, size, medianMs: 0, samplesMs: [], maxMountedRows: 0, checksum: 0 }]));
+          const perProvider = new Map<Provider, Result>(providers.map((provider) => [provider, {
+            provider,
+            scope,
+            workload,
+            size,
+            medianMs: 0,
+            samplesMs: [],
+            readyMedianMs: 0,
+            readySamplesMs: [],
+            maxMountedRows: 0,
+            checksum: 0,
+          }]));
           // Every changed operation has its opposite state established first,
           // outside timing. Rotating providers cannot turn a changed query into
           // a cold mount or an unchanged-state memoization hit.
@@ -95,7 +118,10 @@ async function run(options: { sizes?: number[]; scopes?: Scope[]; sampleCount?: 
               const firstRow = gridElement.querySelector(rowSelector);
               if (!firstRow || !firstRow.textContent?.includes(`Account ${first! % 2000}`)) throw new Error(`${provider}: displayed first row does not match the result`);
               const entry = perProvider.get(provider)!;
-              if (sample >= 0) entry.samplesMs.push(result.elapsed);
+              if (sample >= 0) {
+                entry.samplesMs.push(result.elapsed);
+                entry.readySamplesMs.push(result.readyElapsed);
+              }
               entry.maxMountedRows = Math.max(entry.maxMountedRows, result.mountedRows);
               entry.checksum = ids.reduce((sum, id, position) => (sum + (position + 1) * (id + 1)) >>> 0, 0);
               invocation++;
@@ -103,7 +129,9 @@ async function run(options: { sizes?: number[]; scopes?: Scope[]; sampleCount?: 
           }
           for (const entry of perProvider.values()) {
             const sorted = [...entry.samplesMs].sort((left, right) => left - right);
+            const readySorted = [...entry.readySamplesMs].sort((left, right) => left - right);
             entry.medianMs = sorted[Math.floor(sorted.length / 2)]!;
+            entry.readyMedianMs = readySorted[Math.floor(readySorted.length / 2)]!;
             results.push(entry);
           }
         }
@@ -130,11 +158,19 @@ async function preview() {
 function showResults(report: Report) {
   const table = document.createElement("table");
   table.setAttribute("aria-label", "Browser reference results");
-  table.innerHTML = "<thead><tr><th>Scope</th><th>Rows</th><th>Workload</th><th>Provider</th><th>Median (ms)</th><th>Mounted rows</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>Scope</th><th>Rows</th><th>Workload</th><th>Provider</th><th>Ready (ms)</th><th>Frame-complete (ms)</th><th>Mounted rows</th></tr></thead>";
   const body = table.createTBody();
   for (const result of report.results) {
     const row = body.insertRow();
-    for (const value of [result.scope, result.size.toLocaleString(), result.workload, result.provider, result.medianMs.toFixed(2), String(result.maxMountedRows)]) row.insertCell().textContent = value;
+    for (const value of [
+      result.scope,
+      result.size.toLocaleString(),
+      result.workload,
+      result.provider,
+      result.readyMedianMs.toFixed(2),
+      result.medianMs.toFixed(2),
+      String(result.maxMountedRows),
+    ]) row.insertCell().textContent = value;
   }
   document.getElementById("results")!.replaceChildren(table);
 }
