@@ -180,19 +180,42 @@ export function applyTableFilter<TRow>(
     return rowsFromSourceIndices(rows, builtIn.sourceIndices);
   }
 
-  const predicateCandidates = structuredFilters.length > 0
-    ? kernel.queryTable(rows, columns, { columnFilters: structuredFilters }, []).sourceIndices
-    : rows.map((_, rowIndex) => rowIndex);
-  const included = new Set(builtIn.sourceIndices);
-
-  for (const rowIndex of predicateCandidates) {
-    const row = rows[rowIndex];
-    if (row !== undefined && filter.predicate(row, rowIndex, filter.query ?? "")) {
-      included.add(rowIndex);
+  const included = new Uint8Array(rows.length);
+  for (const rowIndex of builtIn.sourceIndices) {
+    if (rowIndex >= 0 && rowIndex < rows.length) {
+      included[rowIndex] = 1;
     }
   }
 
-  return rows.filter((_, rowIndex) => included.has(rowIndex));
+  if (structuredFilters.length > 0) {
+    const predicateCandidates = kernel.queryTable(
+      rows,
+      columns,
+      { columnFilters: structuredFilters },
+      [],
+    ).sourceIndices;
+    for (const rowIndex of predicateCandidates) {
+      const row = rows[rowIndex];
+      if (row !== undefined && filter.predicate(row, rowIndex, filter.query ?? "")) {
+        included[rowIndex] = 1;
+      }
+    }
+  } else {
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex];
+      if (row !== undefined && filter.predicate(row, rowIndex, filter.query ?? "")) {
+        included[rowIndex] = 1;
+      }
+    }
+  }
+
+  const filteredRows: TRow[] = [];
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    if (included[rowIndex] !== 0 && rowIndex in rows) {
+      filteredRows.push(rows[rowIndex] as TRow);
+    }
+  }
+  return filteredRows;
 }
 
 export function applyTableSort<TRow>(
