@@ -21,12 +21,10 @@ fn main() {
                 .collect(),
             vec![],
         );
-        index.add_numeric_column(
-            (0..size)
-                .map(|row| ((row * 7_919) % 100_000) as f64)
-                .collect(),
-            vec![],
-        );
+        let sort_values = (0..size)
+            .map(|row| ((row * 7_919) % 100_000) as f64)
+            .collect::<Vec<_>>();
+        index.add_numeric_column(sort_values.clone(), vec![]);
         let sort = vec![TableSort {
             column_index: 2,
             direction: TableSortDirection::Desc,
@@ -98,6 +96,20 @@ fn main() {
                 ..query.clone()
             };
             let reference = || {
+                if workload == "full-sort" {
+                    let mut row_indices = (0..size as u32).collect::<Vec<_>>();
+                    row_indices.sort_unstable_by(|left, right| {
+                        sort_values[*left as usize]
+                            .total_cmp(&sort_values[*right as usize])
+                            .reverse()
+                            .then_with(|| left.cmp(right))
+                    });
+                    return TableIndexResult {
+                        filtered_row_count: size,
+                        row_indices,
+                    };
+                }
+
                 let mut result = index.query(black_box(&full_query));
                 result.row_indices = result
                     .row_indices
@@ -117,11 +129,11 @@ fn main() {
                 // Alternate order within the same process to reduce ordering bias.
                 if sample % 2 == 0 {
                     samples.push(measure(iterations, || index.query(black_box(&query))));
-                    if query.row_limit.is_some() {
+                    if query.row_limit.is_some() || workload == "full-sort" {
                         reference_samples.push(measure(iterations, reference));
                     }
                 } else {
-                    if query.row_limit.is_some() {
+                    if query.row_limit.is_some() || workload == "full-sort" {
                         reference_samples.push(measure(iterations, reference));
                     }
                     samples.push(measure(iterations, || index.query(black_box(&query))));
@@ -153,7 +165,7 @@ fn main() {
     }
     let mut report = String::new();
     writeln!(report,
-        "{{\"version\":1,\"suite\":\"tables-core-query-v1\",\"arch\":\"{}\",\"os\":\"{}\",\"sampleCount\":{SAMPLES},\"reference\":\"same kernel, full filter/sort then materialized page; not another library\",\"results\":[{}]}}",
+        "{{\"version\":1,\"suite\":\"tables-core-query-v1\",\"arch\":\"{}\",\"os\":\"{}\",\"sampleCount\":{SAMPLES},\"reference\":\"paged workloads use the same kernel with full materialization; full-sort uses a direct f64 total_cmp comparator reference over the identical fixture\",\"results\":[{}]}}",
         std::env::consts::ARCH, std::env::consts::OS, results.join(","),
     ).unwrap();
     // Cargo runs benches from the crate directory, not the workspace root.
