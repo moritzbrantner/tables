@@ -36,7 +36,7 @@ It also records the same query semantics used by the GitHub Pages quick comparis
 
 The command performs one warm-up invocation followed by five timed samples per workload and records the median plus all samples. It writes `.artifacts/table-query-benchmark.json` with Bun, OS, architecture, CPU model, and CPU-count metadata.
 
-`cargo bench --locked -p tables-core --bench query` separately covers eight native query workloads at 1,000, 10,000, and 100,000 rows. It writes `.artifacts/table-core-query-benchmark.json`, including seven samples per case and same-kernel full-materialization references for paged queries. Its reference is not another library. The full-result model is unchanged; the additive windowed model forwards limits into Rust.
+`cargo bench --locked -p tables-core --bench query` separately covers eight native query workloads at 1,000, 10,000, and 100,000 rows. The single-numeric full-sort case also records an alternating same-fixture `f64::total_cmp` comparator reference, so the specialized ordered-key path can be evaluated without comparing unrelated runners. It writes `.artifacts/table-core-query-benchmark.json`, including seven samples per case and same-kernel full-materialization references for paged queries. Its reference is not another library. The full-result model is unchanged; the additive windowed model forwards limits into Rust.
 
 ### Browser/virtualization workloads
 
