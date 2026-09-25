@@ -7,7 +7,7 @@ use tables_core::query::{
     TableQuery, TableSearch, TableSort, TableSortDirection,
 };
 
-const SIZES: [usize; 3] = [1_000, 10_000, 100_000];
+const SIZES: [usize; 4] = [1_000, 10_000, 50_000, 100_000];
 const SAMPLES: usize = 7;
 
 fn main() {
