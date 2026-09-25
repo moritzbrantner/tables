@@ -54,7 +54,7 @@ try {
     methodology: {
       viewport: { width: 1280, height: 1000 }, gridHeight: 400, rowHeight: 32, pageSize: 100,
       warmups: 2, providerOrder: "rotating", queryStates: "alternating; opposite state established outside each changed-operation timer",
-      timing: "query/React commit plus asynchronous provider readiness and two animation frames; excludes fixture/oracle construction and result verification",
+      timing: "medianMs = query/React commit plus asynchronous provider readiness and two animation frames; readyMedianMs = the same operation stopped immediately when the provider signals ready, before frame waits; both exclude fixture/oracle construction and result verification",
       correctness: "every page ID, full matching count, first displayed row and bounded row DOM after every invocation",
       scope: "client = full source data supplied; window = common oracle page supplied equally to every provider; no full-dataset continuous-scroll claim",
     },
