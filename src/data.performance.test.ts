@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { applyTableFilter, createTableModel, type TableDataColumn } from "./data";
+import { applyTableFilter, applyTableSort, createTableModel, type TableDataColumn } from "./data";
 import { setTableQueryKernel } from "./query-kernel";
 
 afterEach(() => {
@@ -24,6 +24,34 @@ describe("query work ratchets", () => {
     expect(actual).toEqual(expected);
     // Allows query preparation, not one Intl operation per row or cell.
     expect(calls).toBeLessThanOrEqual(2);
+  });
+
+  it.each([1_000, 10_000])("evaluates fallback function sort keys once per row at %i rows", (size) => {
+    setTableQueryKernel(null);
+    const rows = Array.from({ length: size }, (_, id) => ({
+      id,
+      score: (id * 7_919) % 100_000,
+    }));
+    const scoreGroup = vi.fn((row: (typeof rows)[number]) => row.score % 17);
+    const idGroup = vi.fn((row: (typeof rows)[number]) => row.id % 13);
+    const columns: TableDataColumn<(typeof rows)[number]>[] = [
+      { id: "scoreGroup", accessor: scoreGroup, type: "number" },
+      { id: "idGroup", accessor: "id", sortAccessor: idGroup, type: "number" },
+    ];
+
+    const actual = applyTableSort(rows, columns, [
+      { columnId: "scoreGroup", direction: "asc" },
+      { columnId: "idGroup", direction: "desc" },
+    ]);
+    const expected = [...rows].sort((left, right) =>
+      (left.score % 17) - (right.score % 17)
+      || (right.id % 13) - (left.id % 13)
+      || left.id - right.id
+    );
+
+    expect(actual.map((row) => row.id)).toEqual(expected.map((row) => row.id));
+    expect(scoreGroup).toHaveBeenCalledTimes(size);
+    expect(idGroup).toHaveBeenCalledTimes(size);
   });
 
   it("materializes kernel indices without a map/filter intermediate array", () => {
