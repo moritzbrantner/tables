@@ -364,7 +364,7 @@ impl TableIndex {
                     });
                 }
                 rows = window_rows(rows, start, None);
-                rows.sort_unstable_by(|left, right| prepared.compare_rows(*left, *right));
+                prepared.sort_rows(&mut rows);
             }
         }
 
@@ -466,6 +466,15 @@ impl<'a> PreparedQuery<'a> {
         }
 
         left.cmp(&right)
+    }
+
+    fn sort_rows(&self, rows: &mut [u32]) {
+        if let [(TableColumn::Numeric { values, validity }, rule)] = self.sort.as_slice() {
+            rows.sort_unstable_by_key(|row| numeric_sort_key(values, validity, *row, *rule));
+            return;
+        }
+
+        rows.sort_unstable_by(|left, right| self.compare_rows(*left, *right));
     }
 }
 
@@ -748,6 +757,38 @@ fn lowercase_owned(value: &str) -> String {
     }
 }
 
+fn numeric_sort_key(
+    values: &[f64],
+    validity: &[u8],
+    row_index: u32,
+    sort: TableSort,
+) -> (u8, u64, u32) {
+    let Some(value) = numeric_value(values, validity, row_index as usize) else {
+        let null_rank = match sort.nulls {
+            TableNulls::First => 0,
+            TableNulls::Last => 2,
+        };
+        return (null_rank, 0, row_index);
+    };
+
+    let ascending = f64_total_order_key(value);
+    let directional = match sort.direction {
+        TableSortDirection::Asc => ascending,
+        TableSortDirection::Desc => !ascending,
+    };
+    (1, directional, row_index)
+}
+
+fn f64_total_order_key(value: f64) -> u64 {
+    const SIGN: u64 = 1 << 63;
+    let bits = value.to_bits();
+    if bits & SIGN == 0 {
+        bits ^ SIGN
+    } else {
+        !bits
+    }
+}
+
 fn numeric_value(values: &[f64], validity: &[u8], row_index: usize) -> Option<f64> {
     if !is_valid(validity, row_index) {
         return None;
@@ -870,6 +911,48 @@ mod tests {
 
         assert_eq!(result.filtered_row_count, 1);
         assert_eq!(result.row_indices, vec![2]);
+    }
+
+    #[test]
+    fn single_numeric_sort_key_matches_total_cmp_with_nulls_and_signed_zero() {
+        let values = vec![
+            7.0,
+            -0.0,
+            0.0,
+            -17.5,
+            42.0,
+            f64::NAN,
+            f64::INFINITY,
+            -3.0,
+            7.0,
+        ];
+        let validity = vec![1, 1, 1, 1, 1, 1, 1, 0, 1];
+
+        for direction in [TableSortDirection::Asc, TableSortDirection::Desc] {
+            for nulls in [TableNulls::First, TableNulls::Last] {
+                let mut index = TableIndex::new();
+                let column = index.add_numeric_column(values.clone(), validity.clone());
+                let rule = TableSort {
+                    column_index: column,
+                    direction,
+                    nulls,
+                };
+                let actual = index.query(&TableQuery {
+                    sort: vec![rule],
+                    ..TableQuery::default()
+                });
+
+                let mut expected = (0..values.len() as u32).collect::<Vec<_>>();
+                expected.sort_unstable_by(|left, right| {
+                    let left_value = numeric_value(&values, &validity, *left as usize);
+                    let right_value = numeric_value(&values, &validity, *right as usize);
+                    compare_optional(left_value, right_value, rule, f64::total_cmp)
+                        .then_with(|| left.cmp(right))
+                });
+
+                assert_eq!(actual.row_indices, expected, "{direction:?}/{nulls:?}");
+            }
+        }
     }
 
     #[test]
