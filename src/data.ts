@@ -416,16 +416,41 @@ function applyTableSortTypeScript<TRow>(
     return sortedRows;
   }
 
+  type PreparedSortRule =
+    | {
+        accessor: keyof TRow;
+        direction: TableSortDirection;
+      }
+    | {
+        direction: TableSortDirection;
+        values: readonly unknown[];
+      };
+
+  const preparedRules: PreparedSortRule[] = rules.map((rule) => {
+    const valueAccessor = rule.column.sortAccessor
+      ?? (typeof rule.column.accessor === "function" ? rule.column.accessor : null);
+
+    return valueAccessor
+      ? {
+          direction: rule.direction,
+          values: rows.map((row, rowIndex) => valueAccessor(row, rowIndex)),
+        }
+      : {
+          accessor: rule.column.accessor as keyof TRow,
+          direction: rule.direction,
+        };
+  });
+
   return rows
     .map((row, rowIndex) => ({ row, rowIndex }))
     .sort((left, right) => {
-      for (const rule of rules) {
-        const leftValue = rule.column.sortAccessor
-          ? rule.column.sortAccessor(left.row, left.rowIndex)
-          : getColumnValue(rule.column, left.row, left.rowIndex);
-        const rightValue = rule.column.sortAccessor
-          ? rule.column.sortAccessor(right.row, right.rowIndex)
-          : getColumnValue(rule.column, right.row, right.rowIndex);
+      for (const rule of preparedRules) {
+        const leftValue = "values" in rule
+          ? rule.values[left.rowIndex]
+          : left.row[rule.accessor];
+        const rightValue = "values" in rule
+          ? rule.values[right.rowIndex]
+          : right.row[rule.accessor];
         const comparison = compareForSort(leftValue, rightValue, rule.direction, collator);
         if (comparison !== 0) {
           return comparison;
