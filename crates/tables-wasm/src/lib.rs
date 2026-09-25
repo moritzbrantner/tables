@@ -3,7 +3,7 @@
 //! This crate owns no table semantics. It translates typed JavaScript inputs
 //! into the pure Rust core and returns compact numeric results.
 
-use js_sys::{Float64Array, Uint8Array};
+use js_sys::{Array, Float64Array, Uint8Array};
 use serde::Deserialize;
 use tables_core::query::{
     TableFilter, TableFilterOperator, TableFilterValue, TableIndex as CoreTableIndex, TableNulls,
@@ -117,19 +117,29 @@ impl WasmTableIndex {
 
     /// Adds a string-like column and returns its column index.
     #[wasm_bindgen(js_name = addStringColumn)]
-    pub fn add_string_column(&mut self, values: JsValue) -> Result<usize, JsValue> {
-        let values: Vec<Option<String>> =
-            serde_wasm_bindgen::from_value(values).map_err(into_js_error)?;
-        let validity = values
-            .iter()
-            .map(|value| u8::from(value.is_some()))
-            .collect::<Vec<_>>();
-        let values = values
-            .into_iter()
-            .map(|value| value.unwrap_or_default())
-            .collect::<Vec<_>>();
+    pub fn add_string_column(&mut self, values: Array) -> Result<usize, JsValue> {
+        let length = values.length() as usize;
+        let mut strings = Vec::with_capacity(length);
+        let mut validity = Vec::with_capacity(length);
 
-        Ok(self.inner.add_string_column(values, validity))
+        for index in 0..values.length() {
+            let value = values.get(index);
+            if value.is_null() || value.is_undefined() {
+                strings.push(String::new());
+                validity.push(0);
+                continue;
+            }
+
+            let Some(value) = value.as_string() else {
+                return Err(JsValue::from_str(&format!(
+                    "string column value at index {index} must be a string, null, or undefined"
+                )));
+            };
+            strings.push(value);
+            validity.push(1);
+        }
+
+        Ok(self.inner.add_string_column(strings, validity))
     }
 
     /// Prepares a full immutable result in Rust without transferring all indices.
