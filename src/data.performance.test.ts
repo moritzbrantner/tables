@@ -54,6 +54,40 @@ describe("query work ratchets", () => {
     expect(idGroup).toHaveBeenCalledTimes(size);
   });
 
+  it("preserves column receivers when precomputing fallback sort callbacks", () => {
+    setTableQueryKernel(null);
+    const rows = [
+      { id: 0, score: 20 },
+      { id: 1, score: 10 },
+      { id: 2, score: 30 },
+    ];
+    type Row = (typeof rows)[number];
+    const functionColumn: TableDataColumn<Row> = {
+      id: "function",
+      type: "number",
+      accessor(this: TableDataColumn<Row>, row) {
+        expect(this.id).toBe("function");
+        return row.score;
+      },
+    };
+    const sortColumn: TableDataColumn<Row> = {
+      id: "sort",
+      accessor: "score",
+      type: "number",
+      sortAccessor(this: TableDataColumn<Row>, row) {
+        expect(this.id).toBe("sort");
+        return -row.score;
+      },
+    };
+
+    expect(applyTableSort(rows, [functionColumn], [
+      { columnId: "function", direction: "asc" },
+    ]).map((row) => row.id)).toEqual([1, 0, 2]);
+    expect(applyTableSort(rows, [sortColumn], [
+      { columnId: "sort", direction: "asc" },
+    ]).map((row) => row.id)).toEqual([2, 0, 1]);
+  });
+
   it("materializes kernel indices without a map/filter intermediate array", () => {
     const rows = [{ id: 0 }, undefined, { id: 2 }, { id: 3 }];
     const sourceIndices = [0, 1, 2, 3];
