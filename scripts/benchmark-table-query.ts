@@ -38,6 +38,15 @@ const columns: TableDataColumn<BenchmarkRow>[] = [
   { accessor: "stage", id: "stage", type: "string" },
   { accessor: "value", id: "value", type: "number" },
 ];
+const functionSortColumns: TableDataColumn<BenchmarkRow>[] = [
+  { accessor: (row) => row.region.length, id: "regionLength", type: "number" },
+  {
+    accessor: "value",
+    id: "valueBucket",
+    sortAccessor: (row) => row.value % 97,
+    type: "number",
+  },
+];
 
 const results: BenchmarkResult[] = [];
 
@@ -61,6 +70,15 @@ for (const size of sizes) {
         { columnId: "stage", direction: "desc" },
         { columnId: "value", direction: "desc" },
       ]),
+    ),
+    measure(size, "function-accessor-sort", () =>
+      applyTableSort(rows, functionSortColumns, [
+        { columnId: "regionLength", direction: "asc" },
+        { columnId: "valueBucket", direction: "desc" },
+      ]),
+    ),
+    measure(size, "function-accessor-sort-reference", () =>
+      referenceFunctionSort(rows),
     ),
     measure(size, "model-query", () =>
       createTableModel({
@@ -150,6 +168,13 @@ function measure(size: number, workload: string, operation: () => unknown): Benc
     size,
     workload,
   };
+}
+
+function referenceFunctionSort(rows: readonly BenchmarkRow[]) {
+  return [...rows].sort((left, right) =>
+    left.region.length - right.region.length
+    || (right.value % 97) - (left.value % 97)
+  );
 }
 
 function referenceQuery(rows: readonly BenchmarkRow[]) {
