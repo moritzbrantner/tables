@@ -433,7 +433,7 @@ function applyTableSortTypeScript<TRow>(
     return valueAccessor
       ? {
           direction: rule.direction,
-          values: rows.map((row, rowIndex) => valueAccessor(row, rowIndex)),
+          values: rows.map((row, rowIndex) => valueAccessor.call(rule.column, row, rowIndex)),
         }
       : {
           accessor: rule.column.accessor as keyof TRow,
