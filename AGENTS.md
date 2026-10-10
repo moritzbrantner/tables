@@ -25,7 +25,7 @@ The canonical decisions are in [docs/architecture.md](docs/architecture.md), whi
 
 ## Public entry points and dependency direction
 
-The `package.json` `exports` are `.` (grid and headless re-exports), `./table` (semantic lane only), `./react` (`src/react-rust.tsx`), `./data`, `./server`, `./view-state`, `./virtualization`, `./wasm`, `./styles.css` and `./table.css`.
+The `package.json` `exports` are `.` (grid and headless re-exports), `./table` (semantic lane only), `./react` (`src/react-rust.tsx`), `./data`, `./server`, `./view-state`, `./virtualization`, `./wasm`, `./styles.css`, `./table.css` and `./package.json`.
 
 - `./table` must remain consumable without the grid, query or Wasm runtime.
 - `./data` and `./virtualization` stay React-free. React entry points depend inward on them, never the reverse.
@@ -33,7 +33,7 @@ The `package.json` `exports` are `.` (grid and headless re-exports), `./table` (
 ## Fixtures
 
 - `examples/` holds the deterministic example pages (`examples/src/playground/data.ts` for generated rows). They are the executable state catalog used by Pages and Playwright. There is deliberately no Storybook; see `docs/verification.md`.
-- Browser acceptance tests live in `tests/e2e/`. Rust tests and benches live in `crates/tables-core/{tests,benches}`.
+- Browser acceptance tests live in `tests/e2e/`. Rust integration tests and benches live in `crates/tables-core/{tests,benches}`. There are also inline unit tests in `crates/tables-core/src/` (for example `lib.rs` and `query.rs`) and in `crates/tables-wasm/src/lib.rs`.
 
 ## Validation
 
