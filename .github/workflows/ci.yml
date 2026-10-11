@@ -29,7 +29,7 @@ jobs:
         run: rustup toolchain install
 
       - name: Install wasm-pack
-        run: if ! command -v wasm-pack; then cargo install wasm-pack --version 0.14.0 --locked; fi
+        run: bash scripts/install-wasm-pack-ci.sh
 
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
