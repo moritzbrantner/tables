@@ -2,20 +2,61 @@ name: CI
 
 on:
   pull_request:
+    types:
+    - opened
+    - synchronize
+    - reopened
+    - labeled
   push:
-    branches: [main]
+    branches:
+    - main
 
 permissions:
   contents: read
 
 jobs:
   verify:
+    outputs:
+      allow-skipped: ${{ steps.merge-scope.outputs.allow-skipped }}
+      validate-rust: ${{ steps.merge-scope.outputs.validate-rust }}
+      validate-public-contract: ${{ steps.merge-scope.outputs.validate-public-contract }}
+      validate-deterministic-findings: ${{ steps.merge-scope.outputs.validate-deterministic-findings }}
+      validate-deploy-pages: ${{ steps.merge-scope.outputs.validate-deploy-pages }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+      - name: Determine required PR validation scope
+        id: merge-scope
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_BRANCH: ${{ github.base_ref }}
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, re, subprocess
+          paths = subprocess.check_output(["git", "diff", "--no-renames", "--name-only", "-z", os.environ["BASE_SHA"], os.environ["HEAD_SHA"]]).decode().split("\0")
+          filters = {'validate-rust': {'paths': ['.github/workflows/rust.yml', 'Cargo.lock', 'Cargo.toml', 'benchmarks/**', 'bun.lock', 'crates/**', 'docs/performance.md', 'docs/rust-foundation.md', 'examples/**', 'package.json', 'rust-toolchain.toml', 'scripts/benchmark-*.ts', 'scripts/install-wasm-pack-ci.sh', 'scripts/check-wasm-package.mjs', 'scripts/copy-wasm.mjs', 'src/data*.ts', 'src/query-*.ts', 'src/react*.tsx', 'src/virtualization.ts', 'src/virtualization.test.ts', 'src/wasm*.ts', 'styles.css', 'table.css', 'vite.config.ts'], 'branches': None}, 'validate-public-contract': {'paths': None, 'branches': None}, 'validate-deterministic-findings': {'paths': None, 'branches': None}, 'validate-deploy-pages': {'paths': ['.github/workflows/deploy-pages.yml', 'scripts/install-wasm-pack-ci.sh', 'scripts/smoke-pages.mjs', 'vite.config.ts', 'package.json', 'bun.lock', 'benchmarks/**', 'examples/**', 'src/**', 'crates/**'], 'branches': None}}
+          def matches(path, pattern):
+              pattern = re.escape(pattern).replace(r"\*\*", ".*").replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
+              return re.fullmatch(pattern, path) is not None
+          skipped = []
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              for name, scope in filters.items():
+                  matches_paths = scope["paths"] is None or any(matches(path, pattern) for path in paths if path for pattern in scope["paths"])
+                  matches_branch = scope["branches"] is None or any(matches(os.environ["BASE_BRANCH"], pattern) for pattern in scope["branches"])
+                  required = matches_paths and matches_branch
+                  print(f"{name}={str(required).lower()}", file=output)
+                  if not required:
+                      skipped.append(name)
+              print("allow-skipped=" + json.dumps(skipped), file=output)
+          PYTHON
 
       - name: Verify pinned wasm-pack provisioning
         run: node --test scripts/install-wasm-pack-ci.test.mjs
@@ -39,3 +80,45 @@ jobs:
 
       - name: Verify
         run: bun run verify
+
+  validate-rust:
+    needs: verify
+    if: github.event_name == 'pull_request' && needs.verify.outputs.validate-rust == 'true'
+    uses: ./.github/workflows/rust.yml
+    permissions:
+      contents: read
+
+  validate-public-contract:
+    needs: verify
+    if: github.event_name == 'pull_request' && needs.verify.outputs.validate-public-contract == 'true'
+    uses: ./.github/workflows/public-contract.yml
+    permissions:
+      contents: read
+
+  validate-deterministic-findings:
+    needs: verify
+    if: github.event_name == 'pull_request' && needs.verify.outputs.validate-deterministic-findings == 'true'
+    uses: ./.github/workflows/deterministic-findings.yml
+    permissions:
+      contents: read
+
+  validate-deploy-pages:
+    needs: verify
+    if: github.event_name == 'pull_request' && needs.verify.outputs.validate-deploy-pages == 'true'
+    uses: ./.github/workflows/deploy-pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  merge-ready:
+    name: merge-ready
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: ["verify", "validate-rust", "validate-public-contract", "validate-deterministic-findings", "validate-deploy-pages"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: moritzbrantner/reusable-workflows/.github/actions/merge-ready@b0f25f241d76af2584dfc9e375084ff5c5cb97da
+        with:
+          needs: ${{ toJSON(needs) }}
+          required: '["verify", "validate-rust", "validate-public-contract", "validate-deterministic-findings", "validate-deploy-pages"]'
+          allow-skipped: ${{ needs.verify.outputs.allow-skipped || '[]' }}

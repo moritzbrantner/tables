@@ -2,27 +2,16 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened, labeled]
-    paths:
-      - ".github/workflows/deploy-pages.yml"
-      - "scripts/install-wasm-pack-ci.sh"
-      - "scripts/smoke-pages.mjs"
-      - "vite.config.ts"
-      - "package.json"
-      - "bun.lock"
-      - "benchmarks/**"
-      - "examples/**"
-      - "src/**"
-      - "crates/**"
-  workflow_dispatch:
+    branches:
+    - main
+  workflow_dispatch: null
+  workflow_call: null
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: tables-deploy-pages-pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

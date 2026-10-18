@@ -44,6 +44,6 @@ See [docs/verification.md](docs/verification.md) for the full layering.
 - Package: `bun run pack:check` (build, Wasm package check, publint).
 - Wasm parity: `bun run test:wasm-parity`. Requires `wasm-pack`.
 - Rust: `cargo fmt --all --check`, `cargo clippy --locked --workspace --all-targets --all-features -- -D warnings` and `cargo test --locked --workspace --all-features`. Run the same for `crates/tables-wasm` via `--manifest-path`, as in `.github/workflows/rust.yml`.
-- Full: `bun run verify`. The hosted `verify` check is the merge authority (`.coding-tooling.json`).
+- Full: `bun run verify`. The hosted `merge-ready` check is the merge authority (`.coding-tooling.json`).
 
 Performance claims need evidence (`docs/performance.md`, `bun run benchmark:*`). Virtualization is a tool, not the default.
