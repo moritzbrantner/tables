@@ -1,65 +1,41 @@
 name: Rust Foundation
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/rust.yml"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "benchmarks/**"
-      - "bun.lock"
-      - "crates/**"
-      - "docs/performance.md"
-      - "docs/rust-foundation.md"
-      - "examples/**"
-      - "package.json"
-      - "rust-toolchain.toml"
-      - "scripts/benchmark-*.ts"
-      - "scripts/install-wasm-pack-ci.sh"
-      - "scripts/check-wasm-package.mjs"
-      - "scripts/copy-wasm.mjs"
-      - "src/data*.ts"
-      - "src/query-*.ts"
-      - "src/react*.tsx"
-      - "src/virtualization.ts"
-      - "src/virtualization.test.ts"
-      - "src/wasm*.ts"
-      - "styles.css"
-      - "table.css"
-      - "vite.config.ts"
   push:
-    branches: [main]
+    branches:
+    - main
     paths:
-      - ".github/workflows/rust.yml"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "benchmarks/**"
-      - "bun.lock"
-      - "crates/**"
-      - "docs/performance.md"
-      - "docs/rust-foundation.md"
-      - "examples/**"
-      - "package.json"
-      - "rust-toolchain.toml"
-      - "scripts/benchmark-*.ts"
-      - "scripts/check-wasm-package.mjs"
-      - "scripts/copy-wasm.mjs"
-      - "src/data*.ts"
-      - "src/query-*.ts"
-      - "src/react*.tsx"
-      - "src/virtualization.ts"
-      - "src/virtualization.test.ts"
-      - "src/wasm*.ts"
-      - "styles.css"
-      - "table.css"
-      - "vite.config.ts"
-  workflow_dispatch:
+    - .github/workflows/rust.yml
+    - Cargo.lock
+    - Cargo.toml
+    - benchmarks/**
+    - bun.lock
+    - crates/**
+    - docs/performance.md
+    - docs/rust-foundation.md
+    - examples/**
+    - package.json
+    - rust-toolchain.toml
+    - scripts/benchmark-*.ts
+    - scripts/check-wasm-package.mjs
+    - scripts/copy-wasm.mjs
+    - src/data*.ts
+    - src/query-*.ts
+    - src/react*.tsx
+    - src/virtualization.ts
+    - src/virtualization.test.ts
+    - src/wasm*.ts
+    - styles.css
+    - table.css
+    - vite.config.ts
+  workflow_dispatch: null
+  workflow_call: null
 
 permissions:
   contents: read
 
 concurrency:
-  group: rust-foundation-${{ github.workflow }}-${{ github.ref }}
+  group: tables-rust-rust-foundation-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

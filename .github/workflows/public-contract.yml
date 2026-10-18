@@ -1,10 +1,11 @@
 name: Public Contract
 
 on:
-  pull_request:
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches:
+    - main
+  workflow_dispatch: null
+  workflow_call: null
 
 permissions:
   contents: read

@@ -40,7 +40,7 @@ The example pages are the repository's executable reusable-state catalog. They d
 bun run verify
 ```
 
-The full command runs the fast loop, browser-independent Wasm build and parity checks, package build/publint checks, and the browser loop. GitHub Actions keeps the exact job context `verify` as the hosted merge-authority check and installs the pinned Rust toolchain, `wasm-pack`, and Chromium before invoking this command.
+The full command runs the fast loop, browser-independent Wasm build and parity checks, package build/publint checks, and the browser loop. GitHub Actions requires the stable `merge-ready` check, aggregating the full `verify` job and applicable Rust, public-contract, findings and Pages validations. It installs the pinned Rust toolchain, `wasm-pack`, and Chromium before invoking this command.
 
 ## Test ownership
 
