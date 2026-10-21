@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 
-import type { TableDataColumn } from "./data";
+import type { TableCellContext, TableDataColumn } from "./data";
 
 export type TableColumn<TRow, TValue = unknown> = TableDataColumn<TRow, TValue> & {
-  cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
+  cell?: (context: TableCellContext<TRow, TValue>) => ReactNode;
   header: ReactNode;
 };
 

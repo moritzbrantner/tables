@@ -70,7 +70,7 @@ export const pipelineColumns: TableColumn<PipelineRow>[] = [
   {
     accessor: "amount",
     align: "end",
-    cell: (value) => formatCurrency(Number(value)),
+    cell: ({ value }) => formatCurrency(Number(value)),
     header: "Amount",
     id: "amount",
     sortable: true,
@@ -80,7 +80,7 @@ export const pipelineColumns: TableColumn<PipelineRow>[] = [
   {
     accessor: "probability",
     align: "end",
-    cell: (value) => formatPercent(Number(value)),
+    cell: ({ value }) => formatPercent(Number(value)),
     header: "Probability",
     id: "probability",
     sortable: true,
@@ -89,7 +89,7 @@ export const pipelineColumns: TableColumn<PipelineRow>[] = [
   },
   {
     accessor: "health",
-    cell: (value) => <StatusBadge value={String(value)} />,
+    cell: ({ value }) => <StatusBadge value={String(value)} />,
     filterOptions: healthValues,
     header: "Health",
     id: "health",
@@ -99,7 +99,7 @@ export const pipelineColumns: TableColumn<PipelineRow>[] = [
   },
   {
     accessor: "updatedAt",
-    cell: (value) => (value instanceof Date ? formatDate(value) : ""),
+    cell: ({ value }) => (value instanceof Date ? formatDate(value) : ""),
     header: "Updated",
     id: "updatedAt",
     sortAccessor: (row) => row.updatedAt,
@@ -109,7 +109,7 @@ export const pipelineColumns: TableColumn<PipelineRow>[] = [
   },
   {
     accessor: "renewalDate",
-    cell: (value) => (value instanceof Date ? formatDate(value) : ""),
+    cell: ({ value }) => (value instanceof Date ? formatDate(value) : ""),
     header: "Renewal",
     id: "renewalDate",
     sortAccessor: (row) => row.renewalDate,
@@ -131,7 +131,7 @@ export const customerColumns: TableColumn<CustomerRow>[] = [
   },
   {
     accessor: "status",
-    cell: (value) => <StatusBadge value={String(value)} />,
+    cell: ({ value }) => <StatusBadge value={String(value)} />,
     filterOptions: statuses,
     header: "Status",
     id: "status",
@@ -196,7 +196,7 @@ export const customerColumns: TableColumn<CustomerRow>[] = [
   {
     accessor: "arr",
     align: "end",
-    cell: (value) => formatCurrency(Number(value)),
+    cell: ({ value }) => formatCurrency(Number(value)),
     header: "ARR",
     id: "arr",
     sortable: true,
@@ -206,7 +206,7 @@ export const customerColumns: TableColumn<CustomerRow>[] = [
   {
     accessor: "contractValue",
     align: "end",
-    cell: (value) => formatCurrency(Number(value)),
+    cell: ({ value }) => formatCurrency(Number(value)),
     header: "Contract",
     id: "contractValue",
     sortable: true,
@@ -234,7 +234,7 @@ export const customerColumns: TableColumn<CustomerRow>[] = [
   {
     accessor: "usage",
     align: "end",
-    cell: (value) => formatPercent(Number(value)),
+    cell: ({ value }) => formatPercent(Number(value)),
     header: "Usage",
     id: "usage",
     sortable: true,
@@ -244,7 +244,7 @@ export const customerColumns: TableColumn<CustomerRow>[] = [
   {
     accessor: "riskScore",
     align: "end",
-    cell: (value) => `${Number(value)}/100`,
+    cell: ({ value }) => `${Number(value)}/100`,
     header: "Risk",
     id: "riskScore",
     sortable: true,
@@ -280,7 +280,7 @@ export const customerColumns: TableColumn<CustomerRow>[] = [
   },
   {
     accessor: "renewalDate",
-    cell: (value) => (value instanceof Date ? formatDate(value) : ""),
+    cell: ({ value }) => (value instanceof Date ? formatDate(value) : ""),
     header: "Renewal",
     id: "renewalDate",
     sortAccessor: (row) => row.renewalDate,
@@ -290,7 +290,7 @@ export const customerColumns: TableColumn<CustomerRow>[] = [
   },
   {
     accessor: "lastLoginAt",
-    cell: (value) => (value instanceof Date ? formatDate(value) : ""),
+    cell: ({ value }) => (value instanceof Date ? formatDate(value) : ""),
     header: "Last login",
     id: "lastLoginAt",
     sortAccessor: (row) => row.lastLoginAt,
@@ -330,7 +330,7 @@ export const auditColumns: TableColumn<AuditRow>[] = [
   },
   {
     accessor: "status",
-    cell: (value) => <StatusBadge value={String(value)} />,
+    cell: ({ value }) => <StatusBadge value={String(value)} />,
     filterOptions: auditStatuses,
     header: "Status",
     id: "status",
@@ -340,7 +340,7 @@ export const auditColumns: TableColumn<AuditRow>[] = [
   },
   {
     accessor: "occurredAt",
-    cell: (value) => (value instanceof Date ? formatDate(value) : ""),
+    cell: ({ value }) => (value instanceof Date ? formatDate(value) : ""),
     header: "Occurred",
     id: "occurredAt",
     sortAccessor: (row) => row.occurredAt,

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentPropsWithRef,
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -31,8 +32,11 @@ import {
   createTableModel,
   getColumnValue,
   getNextSortState,
+  getTableRowKey,
+  isColumnSortable,
   type TableModel,
   type TableRowKey,
+  type TableRowKeyAccessor,
   type TableSortRule,
   type TableSortState,
   type TableState,
@@ -49,8 +53,6 @@ import { TableOptionsMenu } from "./table-options";
 import { useTableStateController } from "./use-table-state";
 import { createVariableVirtualLayout, getFixedVirtualRange } from "./virtualization";
 
-export type RowKey<TRow> = keyof TRow | ((row: TRow, rowIndex: number) => TableRowKey);
-
 export type TableProcessingMode = "client" | "manual";
 
 export type TableSelectionMode = "multiple" | "none" | "single";
@@ -62,9 +64,8 @@ export type ColumnResizeMode = "onChange" | "onEnd";
 
 export type { TableColumnMenuOptions, TableColumnMenuTrigger } from "./column-menu";
 
-export type VirtualTableProps<TRow> = {
+type VirtualTableOwnProps<TRow> = {
   ariaLabel?: string;
-  className?: string;
   columnMenu?: boolean | TableColumnMenuOptions;
   columnOverscan?: number;
   columnResizeMode?: ColumnResizeMode;
@@ -89,7 +90,7 @@ export type VirtualTableProps<TRow> = {
   rowHeight?: number;
   /** Zero-based position of the first supplied row within a manual/server result. */
   rowIndexOffset?: number;
-  rowKey: RowKey<TRow>;
+  rowKey: TableRowKeyAccessor<TRow>;
   rows: readonly TRow[];
   selectionMode?: TableSelectionMode;
   showRowIndex?: boolean;
@@ -98,6 +99,10 @@ export type VirtualTableProps<TRow> = {
   striped?: boolean;
   totalRowCount?: number;
 };
+
+/** Remaining props, including `ref`, `className`, `style` and `data-*`, go to the host `<section>`. */
+export type VirtualTableProps<TRow> = VirtualTableOwnProps<TRow> &
+  Omit<ComponentPropsWithRef<"section">, keyof VirtualTableOwnProps<TRow> | "children">;
 
 export type DataTableProps<TRow> = Omit<
   VirtualTableProps<TRow>,
@@ -162,7 +167,6 @@ export function DataTable<TRow>({
 
 export function VirtualTable<TRow>({
   ariaLabel,
-  className,
   columnMenu = false,
   columnOverscan = 1,
   columnResizeMode = "onChange",
@@ -193,6 +197,9 @@ export function VirtualTable<TRow>({
   state,
   striped = true,
   totalRowCount,
+  className,
+  style,
+  ...hostProps
 }: VirtualTableProps<TRow>) {
   const messages = useMemo(() => resolveTableMessages(messageOverrides), [messageOverrides]);
   const resolvedAriaLabel = ariaLabel ?? messages.tableAriaLabel;
@@ -643,7 +650,7 @@ export function VirtualTable<TRow>({
 
   const updateSort = useCallback(
     (column: TableColumn<TRow>, multi: boolean) => {
-      if (!column.sortable) {
+      if (!isColumnSortable(column)) {
         return;
       }
 
@@ -910,7 +917,7 @@ export function VirtualTable<TRow>({
     return (
       <div
         aria-colindex={originalIndex + (showRowIndex ? 2 : 1)}
-        aria-sort={column.sortable ? getAriaSort(activeState.sort, column.id) : undefined}
+        aria-sort={isColumnSortable(column) ? getAriaSort(activeState.sort, column.id) : undefined}
         className={cellClassName("mb-table__header-cell", column, {
           filtered: hasActiveColumnFilter(activeState.filter, column.id),
           menuOpen: isMenuOpen,
@@ -925,7 +932,7 @@ export function VirtualTable<TRow>({
         tabIndex={isContextMenuEnabled(columnMenuOptions) && hasMenuActions ? 0 : undefined}
       >
         <span className="mb-table__header-label">{column.header}</span>
-        {column.sortable ? (
+        {isColumnSortable(column) ? (
           <button
             aria-label={getSortButtonLabel(messages, label, sortRule)}
             className="mb-table__sort-button"
@@ -1001,7 +1008,7 @@ export function VirtualTable<TRow>({
         title={typeof value === "string" ? value : undefined}
       >
         {entry.column.cell
-          ? entry.column.cell(value, row, rowIndex)
+          ? entry.column.cell({ columnId: entry.column.id, row, rowIndex, value })
           : renderCellValue(value)}
       </div>
     );
@@ -1009,10 +1016,11 @@ export function VirtualTable<TRow>({
 
   return (
     <section
+      {...hostProps}
       className={["mb-table", striped ? "mb-table--striped" : "", className ?? ""]
         .filter(Boolean)
         .join(" ")}
-      style={{ "--mb-table-row-height": `${rowHeight}px`, height } as CSSProperties}
+      style={{ ...style, "--mb-table-row-height": `${rowHeight}px`, height } as CSSProperties}
     >
       <div
         aria-label={resolvedAriaLabel}
@@ -1071,7 +1079,7 @@ export function VirtualTable<TRow>({
             >
               {visibleRows.map((row, visibleRowIndex) => {
                 const rowIndex = rowRange.startIndex + visibleRowIndex;
-                const key = getRowKey(rowKey, row, rowIndex);
+                const key = getTableRowKey(rowKey, row, rowIndex);
                 const selectable = selectionMode !== "none" && isRowSelectable?.(row, rowIndex) !== false;
                 const selected = selectedRowKeySet.has(key);
                 const interactive = Boolean(onRowClick) || selectable;
@@ -1317,25 +1325,16 @@ function renderSpacer(position: "after" | "before", width: number) {
   ) : null;
 }
 
-function getRowKey<TRow>(rowKey: RowKey<TRow>, row: TRow, rowIndex: number): TableRowKey {
-  if (typeof rowKey === "function") {
-    return rowKey(row, rowIndex);
-  }
-
-  const value = row[rowKey];
-  return typeof value === "number" || typeof value === "string" ? value : String(value);
-}
-
 function selectRowRange<TRow>(
   rows: readonly TRow[],
-  rowKey: RowKey<TRow>,
+  rowKey: TableRowKeyAccessor<TRow>,
   anchorKey: TableRowKey,
   targetKey: TableRowKey,
   selectedKeys: Set<TableRowKey>,
   isRowSelectable: ((row: TRow, rowIndex: number) => boolean) | undefined,
 ) {
   const keyedRows = rows.map((row, rowIndex) => ({
-    key: getRowKey(rowKey, row, rowIndex),
+    key: getTableRowKey(rowKey, row, rowIndex),
     row,
     rowIndex,
   }));

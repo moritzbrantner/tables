@@ -20,7 +20,7 @@ const columns: TableColumnDef<ResultRow>[] = [
   {
     accessor: "timeMs",
     align: "end",
-    cell: (value) => `${Number(value).toFixed(1)} ms`,
+    cell: ({ value }) => `${Number(value).toFixed(1)} ms`,
     header: "Time",
     id: "time",
     width: 120,

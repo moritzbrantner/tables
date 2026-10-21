@@ -41,7 +41,7 @@ const columns: TableColumnDef<Measurement>[] = [
   {
     accessor: "tests",
     align: "end",
-    cell: (value) => Number(value).toLocaleString(),
+    cell: ({ value }) => Number(value).toLocaleString(),
     header: "AABB tests",
     id: "tests",
     width: 160,
@@ -94,7 +94,7 @@ const columns: TableColumn<Order>[] = [
   {
     accessor: "total",
     align: "end",
-    cell: (value) => `$${Number(value).toLocaleString()}`,
+    cell: ({ value }) => `$${Number(value).toLocaleString()}`,
     header: "Total",
     id: "total",
     sortable: true,

@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type RefObject } from "react";
 
 import {
   getColumnValue,
+  isColumnFilterable,
   type TableColumnFilter,
   type TableColumnType,
   type TableFilter,
@@ -71,7 +72,7 @@ export function ColumnMenu<TRow>({
   );
   const operators = getFilterOperators(columnType, categorical);
   const canApplyFilter = isColumnFilterDraftValid(columnType, draft);
-  const showFilter = menuOptions.filter && column.filterable !== false;
+  const showFilter = menuOptions.filter && isColumnFilterable(column);
   const label = getColumnLabel(column);
 
   const updateDraft = (updates: Partial<ColumnFilterDraft>) => {
@@ -227,7 +228,7 @@ export function hasColumnMenuActions<TRow>(
   column: TableColumn<TRow>,
   menuOptions: ResolvedColumnMenuOptions,
 ) {
-  return menuOptions.filter && column.filterable !== false;
+  return menuOptions.filter && isColumnFilterable(column);
 }
 
 export function isButtonMenuEnabled(menuOptions: ResolvedColumnMenuOptions) {

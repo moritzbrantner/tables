@@ -41,7 +41,7 @@ const semanticColumns: TableColumnDef<PipelineRow>[] = [
   {
     accessor: "amount",
     align: "end",
-    cell: (value) => formatCurrency(Number(value)),
+    cell: ({ value }) => formatCurrency(Number(value)),
     header: "Amount",
     id: "amount",
     width: 140,
@@ -49,7 +49,7 @@ const semanticColumns: TableColumnDef<PipelineRow>[] = [
 ];
 
 const auditColumns: TableColumnDef<AuditRow>[] = [
-  { accessor: "occurredAt", cell: (value) => formatDate(value as Date), header: "Time", id: "time" },
+  { accessor: "occurredAt", cell: ({ value }) => formatDate(value as Date), header: "Time", id: "time" },
   { accessor: "actor", header: "Actor", id: "actor" },
   { accessor: "action", header: "Action", id: "action" },
   { accessor: "status", header: "Status", id: "status" },

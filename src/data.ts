@@ -1,4 +1,13 @@
 import { getTableQueryKernel } from "./query-kernel";
+import type { TableRowKey } from "./row";
+
+export {
+  getTableRowKey,
+  type TableCellContext,
+  type TableRowKey,
+  type TableRowKeyAccessor,
+  type TableRowKeyProperty,
+} from "./row";
 
 export type TableColumnAlign = "center" | "end" | "start";
 
@@ -18,8 +27,6 @@ export type TableFilterOperator =
   | "lte"
   | "notEquals"
   | "startsWith";
-
-export type TableRowKey = string | number;
 
 export type TableColumnSticky = "left" | "right";
 
@@ -223,6 +230,20 @@ export function getColumnValue<TRow, TValue>(
   }
 
   return row[column.accessor] as TValue;
+}
+
+/**
+ * Sorting and filtering are interaction capabilities that default to enabled.
+ * Set `sortable: false` / `filterable: false` to hide the affordances. The
+ * model itself executes whatever state it is given; these flags do not
+ * rewrite programmatic state.
+ */
+export function isColumnSortable(column: { sortable?: boolean }): boolean {
+  return column.sortable !== false;
+}
+
+export function isColumnFilterable(column: { filterable?: boolean }): boolean {
+  return column.filterable !== false;
 }
 
 export function getNextSortState(
