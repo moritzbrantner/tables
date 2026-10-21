@@ -25,7 +25,7 @@ jobs:
         uses: moritzbrantner/coding-tooling@81da4fbbdbe75a8937716cbab0b9a47c447269e8
         with:
           operation: findings
-          bun-version: 1.4.3
+          bun-version: latest
           install-mode: none
           report-path: .artifacts/coding-tooling/findings.json
 
