@@ -66,7 +66,7 @@ const benchmarkColumns: TableColumnDef<BenchmarkResult>[] = [
   {
     accessor: "size",
     align: "end",
-    cell: (value) => Number(value).toLocaleString(),
+    cell: ({ value }) => Number(value).toLocaleString(),
     header: "Rows",
     id: "size",
     width: 110,
@@ -74,14 +74,14 @@ const benchmarkColumns: TableColumnDef<BenchmarkResult>[] = [
   {
     accessor: "medianMs",
     align: "end",
-    cell: (value) => `${Number(value).toFixed(3)} ms`,
+    cell: ({ value }) => `${Number(value).toFixed(3)} ms`,
     header: "Median",
     id: "median",
     width: 130,
   },
   {
     accessor: "samplesMs",
-    cell: (value) => (value as number[]).map((sample) => sample.toFixed(2)).join(", "),
+    cell: ({ value }) => (value as number[]).map((sample) => sample.toFixed(2)).join(", "),
     header: "Samples (ms)",
     id: "samples",
     minWidth: 260,
@@ -92,28 +92,28 @@ const browserComparisonColumns: TableColumnDef<BrowserComparisonResult>[] = [
   {
     accessor: "size",
     align: "end",
-    cell: (value) => Number(value).toLocaleString(),
+    cell: ({ value }) => Number(value).toLocaleString(),
     header: "Rows",
     id: "size",
   },
   {
     accessor: "tablesMedianMs",
     align: "end",
-    cell: (value) => `${Number(value).toFixed(3)} ms`,
+    cell: ({ value }) => `${Number(value).toFixed(3)} ms`,
     header: "tables",
     id: "tables",
   },
   {
     accessor: "referenceMedianMs",
     align: "end",
-    cell: (value) => `${Number(value).toFixed(3)} ms`,
+    cell: ({ value }) => `${Number(value).toFixed(3)} ms`,
     header: "Reference JS",
     id: "reference",
   },
   {
     accessor: "ratio",
     align: "end",
-    cell: (value) => `${Number(value).toFixed(2)}×`,
+    cell: ({ value }) => `${Number(value).toFixed(2)}×`,
     header: "tables / reference",
     id: "ratio",
   },
@@ -122,7 +122,7 @@ const browserComparisonColumns: TableColumnDef<BrowserComparisonResult>[] = [
 const comparisonTargetColumns: TableColumnDef<ComparisonTarget>[] = [
   {
     accessor: "library",
-    cell: (value, row) => (
+    cell: ({ row, value }) => (
       <a href={row.url} rel="noreferrer" target="_blank">
         {String(value)}
       </a>

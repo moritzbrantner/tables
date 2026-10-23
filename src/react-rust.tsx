@@ -12,7 +12,6 @@ export type {
   ColumnResizeMode,
   TableColumn,
   DataTableProps,
-  RowKey,
   TableColumnMenuOptions,
   TableColumnMenuTrigger,
   TableProcessingMode,

@@ -56,7 +56,7 @@ describe("VirtualTable keyboard grid", () => {
     const interactiveColumns: TableColumn<Row>[] = [
       {
         accessor: "name",
-        cell: (value) => <button type="button">Open {String(value)}</button>,
+        cell: ({ value }) => <button type="button">Open {String(value)}</button>,
         header: "Name",
         id: "name",
       },

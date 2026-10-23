@@ -1,9 +1,18 @@
 import type {
+  ComponentPropsWithRef,
   CSSProperties,
-  HTMLAttributes,
   ReactNode,
-  TableHTMLAttributes,
 } from "react";
+
+import { getTableRowKey, type TableCellContext, type TableRowKeyAccessor } from "./row";
+
+export {
+  getTableRowKey,
+  type TableCellContext,
+  type TableRowKey,
+  type TableRowKeyAccessor,
+  type TableRowKeyProperty,
+} from "./row";
 
 export type TableAlign = "center" | "end" | "start";
 
@@ -12,7 +21,7 @@ export type TableDensity = "comfortable" | "compact";
 export type TableColumnDef<TRow, TValue = unknown> = {
   accessor: keyof TRow | ((row: TRow, rowIndex: number) => TValue);
   align?: TableAlign;
-  cell?: (value: TValue, row: TRow, rowIndex: number) => ReactNode;
+  cell?: (context: TableCellContext<TRow, TValue>) => ReactNode;
   cellClassName?: string | ((row: TRow, rowIndex: number) => string | undefined);
   header: ReactNode;
   headerClassName?: string;
@@ -21,8 +30,6 @@ export type TableColumnDef<TRow, TValue = unknown> = {
   minWidth?: number | string;
   width?: number | string;
 };
-
-export type TableRowKey<TRow> = keyof TRow | ((row: TRow, rowIndex: number) => number | string);
 
 export function createTableColumnDefHelper<TRow>() {
   function accessor<TKey extends keyof TRow>(
@@ -42,7 +49,7 @@ export function createTableColumnDefHelper<TRow>() {
   return { accessor, accessorFn };
 }
 
-export type TableProps<TRow> = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
+export type TableProps<TRow> = Omit<ComponentPropsWithRef<"div">, "children"> & {
   ariaLabel?: string;
   caption?: ReactNode;
   captionClassName?: string;
@@ -51,11 +58,11 @@ export type TableProps<TRow> = Omit<HTMLAttributes<HTMLDivElement>, "children"> 
   emptyState?: ReactNode;
   minWidth?: number | string;
   rowClassName?: string | ((row: TRow, rowIndex: number) => string | undefined);
-  rowKey?: TableRowKey<TRow>;
+  rowKey?: TableRowKeyAccessor<TRow>;
   rows: readonly TRow[];
   striped?: boolean;
   tableClassName?: string;
-  tableProps?: Omit<TableHTMLAttributes<HTMLTableElement>, "children" | "className">;
+  tableProps?: Omit<ComponentPropsWithRef<"table">, "children" | "className">;
 };
 
 /**
@@ -129,7 +136,7 @@ export function Table<TRow>({
                   "mb-native-table__row",
                   resolveClassName(rowClassName, row, rowIndex),
                 )}
-                key={getRowKey(rowKey, row, rowIndex)}
+                key={rowKey === undefined ? rowIndex : getTableRowKey(rowKey, row, rowIndex)}
               >
                 {columns.map((column) => {
                   const value = getValue(column, row, rowIndex);
@@ -145,7 +152,7 @@ export function Table<TRow>({
                       style={columnStyle(column)}
                     >
                       {column.cell
-                        ? column.cell(value, row, rowIndex)
+                        ? column.cell({ columnId: column.id, row, rowIndex, value })
                         : renderValue(value)}
                     </td>
                   );
@@ -170,25 +177,6 @@ function getValue<TRow>(column: TableColumnDef<TRow>, row: TRow, rowIndex: numbe
   return typeof column.accessor === "function"
     ? column.accessor(row, rowIndex)
     : row[column.accessor];
-}
-
-function getRowKey<TRow>(
-  rowKey: TableRowKey<TRow> | undefined,
-  row: TRow,
-  rowIndex: number,
-): number | string {
-  if (typeof rowKey === "function") {
-    return rowKey(row, rowIndex);
-  }
-
-  if (rowKey !== undefined) {
-    const value = row[rowKey];
-    if (typeof value === "number" || typeof value === "string") {
-      return value;
-    }
-  }
-
-  return rowIndex;
 }
 
 function renderValue(value: unknown): ReactNode {

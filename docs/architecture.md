@@ -51,6 +51,21 @@ Custom JavaScript callbacks such as predicates or sort accessors remain adapter 
 
 The lightweight `./table` subpath must remain independently consumable. Headless `./data` and `./virtualization` contracts should remain framework-independent and must not require React-specific render types. React entry points may depend inward on those contracts, never the reverse.
 
+## Shared column and host contract
+
+Both React surfaces share one small, React-free seam in `src/row.ts` (re-exported from `./data` and `./table`) and nothing else; grid-only concepts stay on `TableColumn`.
+
+- **Row keys:** `rowKey` is a `TableRowKeyAccessor<TRow>`: a property whose value is `string | number`, or `(row, rowIndex) => string | number`. Values are preserved as-is (numbers stay numbers in selection state). Object-valued properties are a type error. `Table` falls back to the row index when `rowKey` is omitted; `VirtualTable` requires it.
+- **Cell renderers:** `cell` receives one context object, `{ columnId, row, rowIndex, value }`, on both surfaces. Accessors, sort accessors, row keys and class-name callbacks stay positional because they are hot-path predicates.
+- **Sort/filter defaults:** `isColumnSortable` / `isColumnFilterable` are the single source of truth. Both default to enabled; set `sortable: false` or `filterable: false` to hide the affordance. The model executes whatever `TableState` it is given; the flags never rewrite programmatic state.
+- **Host props and refs:** `Table` forwards remaining props (including `ref`) to its container `<div>` and `tableProps` (including `ref`) to `<table>`. `VirtualTable`/`DataTable` forward remaining props (including `ref`, `className`, `style`, `data-*`) to the host `<section>`; the component's own `style` variables are merged on top.
+
+### Migration from earlier commits
+
+- `cell: (value, row, rowIndex) => …` becomes `cell: ({ value, row, rowIndex }) => …`.
+- `RowKey<TRow>` (grid) and `TableRowKey<TRow>` (semantic) are replaced by `TableRowKeyAccessor<TRow>`; `TableRowKey` is now only the `string | number` value type.
+- Grid columns without `sortable` are now sortable. Add `sortable: false` where a header must not sort; `sortable: true` is now redundant.
+
 ## Non-goals
 
 Editing, formulas, pivot-table behavior, spreadsheet semantics, application data fetching, router ownership, and design-system theming are not part of the core table contract unless separately proposed.
