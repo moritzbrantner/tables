@@ -437,25 +437,42 @@ function applyTableSortTypeScript<TRow>(
     return sortedRows;
   }
 
-  return rows
-    .map((row, rowIndex) => ({ row, rowIndex }))
-    .sort((left, right) => {
-      for (const rule of rules) {
-        const leftValue = rule.column.sortAccessor
-          ? rule.column.sortAccessor(left.row, left.rowIndex)
-          : getColumnValue(rule.column, left.row, left.rowIndex);
-        const rightValue = rule.column.sortAccessor
-          ? rule.column.sortAccessor(right.row, right.rowIndex)
-          : getColumnValue(rule.column, right.row, right.rowIndex);
-        const comparison = compareForSort(leftValue, rightValue, rule.direction, collator);
-        if (comparison !== 0) {
-          return comparison;
-        }
-      }
+  // Accessors may be expensive, so each (rule, row) value is read at most once,
+  // and later rules are read only for rows that tie on the earlier ones.
+  const unread = Symbol("unread");
+  const valuesByRule: unknown[][] = rules.map(() => new Array(rows.length).fill(unread));
+  const readValue = (ruleIndex: number, rowIndex: number) => {
+    const values = valuesByRule[ruleIndex];
+    let value = values[rowIndex];
+    if (value === unread) {
+      const { column } = rules[ruleIndex];
+      const row = rows[rowIndex];
+      value = column.sortAccessor
+        ? column.sortAccessor(row, rowIndex)
+        : getColumnValue(column, row, rowIndex);
+      values[rowIndex] = value;
+    }
+    return value;
+  };
+  const rowIndices = Array.from(rows, (_, rowIndex) => rowIndex);
 
-      return left.rowIndex - right.rowIndex;
-    })
-    .map(({ row }) => row);
+  rowIndices.sort((left, right) => {
+    for (let ruleIndex = 0; ruleIndex < rules.length; ruleIndex += 1) {
+      const comparison = compareForSort(
+        readValue(ruleIndex, left),
+        readValue(ruleIndex, right),
+        rules[ruleIndex].direction,
+        collator,
+      );
+      if (comparison !== 0) {
+        return comparison;
+      }
+    }
+
+    return left - right;
+  });
+
+  return rowIndices.map((rowIndex) => rows[rowIndex]);
 }
 
 function matchesColumnFilter(

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { applyTableFilter, createTableModel, type TableDataColumn } from "./data";
+import { applyTableFilter, applyTableSort, createTableModel, type TableDataColumn } from "./data";
 import { setTableQueryKernel } from "./query-kernel";
 
 afterEach(() => {
@@ -46,6 +46,45 @@ describe("query work ratchets", () => {
     expect(model.rows).toEqual([{ id: 0 }, { id: 2 }, { id: 3 }]);
     expect(model.filteredRowCount).toBe(4);
     expect(map).not.toHaveBeenCalled();
+  });
+
+  it("reads each custom sort value at most once and later rules only on ties", () => {
+    setTableQueryKernel(null);
+    const rows = Array.from({ length: 1_000 }, (_, id) => ({ group: id % 2, id }));
+    const groupAccessor = vi.fn((row: (typeof rows)[number]) => row.group);
+    const idAccessor = vi.fn((row: (typeof rows)[number]) => -row.id);
+    const unusedAccessor = vi.fn((row: (typeof rows)[number]) => row.id);
+    const columns: TableDataColumn<(typeof rows)[number]>[] = [
+      { id: "id", accessor: "id", sortAccessor: unusedAccessor },
+      { id: "group", accessor: groupAccessor },
+      { id: "reverse", accessor: "id", sortAccessor: idAccessor },
+    ];
+
+    const sorted = applyTableSort(rows, columns, [
+      { columnId: "group", direction: "asc" },
+      { columnId: "reverse", direction: "asc" },
+    ]);
+
+    expect(sorted.slice(0, 2).map((row) => row.id)).toEqual([998, 996]);
+    expect(sorted.at(-1)?.id).toBe(1);
+    expect(groupAccessor).toHaveBeenCalledTimes(rows.length);
+    expect(idAccessor).toHaveBeenCalledTimes(rows.length);
+    expect(unusedAccessor).not.toHaveBeenCalled();
+
+    const uniqueFirst = vi.fn((row: (typeof rows)[number]) => row.id);
+    const secondary = vi.fn((row: (typeof rows)[number]) => row.group);
+    applyTableSort(
+      rows,
+      [
+        { id: "unique", accessor: uniqueFirst },
+        { id: "secondary", accessor: secondary },
+      ],
+      [
+        { columnId: "unique", direction: "asc" },
+        { columnId: "secondary", direction: "asc" },
+      ],
+    );
+    expect(secondary).not.toHaveBeenCalled();
   });
 
   it("keeps Turkish capital I on the host-locale path", () => {
