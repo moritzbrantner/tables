@@ -18,7 +18,7 @@ The canonical decisions are in [docs/architecture.md](docs/architecture.md), whi
 - `crates/tables-core` (Rust) owns the built-in query semantics: structured filters, global search, stable multi-sort, source-index selection, and table-specific virtualization geometry.
 - `crates/tables-wasm` is a thin browser adapter over `tables-core` and must never become a second semantic implementation. Arbitrary JS callbacks (`accessor`, `sortAccessor`, custom predicates) stay in TypeScript and are never serialized into Wasm.
 - The TypeScript headless modules (`src/data.ts`, `src/virtualization.ts`, `src/view-state.ts`, `src/server.ts`) own the public state/model contracts and the synchronous compatibility path used for SSR, bootstrap and unsupported environments. That path must stay behaviorally identical to Rust; `src/wasm-parity.test.ts` checks this.
-- React (`src/react.tsx`, `src/react-rust.tsx`, `src/table.tsx`) owns rendering, DOM/ARIA, focus, menus, selection gestures and resizing.
+- React (`src/react.tsx`, `src/react-grid-*.tsx`, `src/react-rust.tsx`, `src/table.tsx`) owns rendering, DOM/ARIA, focus, menus, selection gestures and resizing.
 - Applications own fetching, authorization, domain formatting, URL/router sync and persistence.
 - The repository-owned model is canonical. TanStack Table is not the authority, and `@moritzbrantner/viz-engine` is not part of table processing.
 - There is no reverse dependency on `@moritzbrantner/ui`.
