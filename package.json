@@ -103,6 +103,7 @@
     "benchmark:browser": "bun ./scripts/benchmark-table-browser.ts",
     "benchmark:compare": "bun ./scripts/compare-table-benchmarks.ts",
     "benchmark:query": "bun ./scripts/benchmark-table-query.ts",
+    "benchmark:row-memo": "bun ./scripts/benchmark-row-memo.ts",
     "benchmark:tables": "bun run benchmark:query && bun run benchmark:browser",
     "benchmark:virtualization": "bun run build:wasm:node:release && bun ./scripts/benchmark-virtualization.ts",
     "build": "tsup src/index.ts src/table.tsx src/react-rust.tsx src/data.ts src/server.ts src/view-state.ts src/virtualization.ts src/wasm.ts --format esm --dts --clean --out-dir dist && node ./scripts/copy-wasm.mjs",

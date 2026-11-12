@@ -6,7 +6,7 @@
 
 - Keep `rowHeight` fixed. Dynamic row measurement is deliberately not part of the first API because it complicates scrolling and cache invalidation.
 - Provide stable `rowKey` values so React can reuse row DOM nodes while scrolling.
-- Use `sortAccessor` when a rendered cell value is formatted but sorting should use a raw value.
+- Use `sortAccessor` when a rendered cell value is formatted but sorting should use a raw value. Custom sort accessors must be pure and deterministic for the supplied row and index. Accessor invocation counts and order are unspecified: preparation and sorting may reuse values. Randomness, counters, or other side effects cannot define supported ordering. Pure accessors retain the same ordering and TypeScript/Wasm parity.
 - Keep `column.width` explicit for wide tables. Column virtualization depends on predictable widths.
 - Memoize `columns`. Column definitions participate in model building, width calculation, and virtualization.
 - Treat each local data refresh as a replacement immutable `rows` snapshot. The Rust/Wasm query index is prepared and reused by snapshot identity rather than rematerialized for every filter/sort change.
@@ -189,3 +189,68 @@ Keep session ownership outside React's render cycle, or create and dispose it wi
 Declared number/date/boolean columns now write directly to their typed values and validity buffers; declared string/JSON columns build only the array needed by the string ABI. Accessors are called once per present source row. Sparse-array holes, invalid/nonfinite values, signed zero, and source accessor positions retain their previous transport semantics. Unspecified types still use first-non-null inference, and custom sort-accessor types remain independent of the display type.
 
 `benchmark:preparation` compares the actual bridge from merged commit `87d7f6c` with the current bridge in one process using the **same release Wasm binary**. Historical bridge bytes are checked against their Git blob identity. The workload uses fresh immutable row-array identities, all-column search, three dataset sizes and both narrow/wide declared schemas. Fixture creation and GC are excluded; materialization, native indexing/querying and result transfer are included. This isolates the adapter change without presenting a synthetic mapper microbenchmark as end-to-end performance.
+
+## Row memoization decision (#80)
+
+Row memoization is deferred. The targeted prototype wraps the existing `GridRow`
+with `React.memo` and its default shallow prop comparison, preserving every
+callback and visible prop. It avoids **zero row renders** in the measured
+range-crossing workloads. `visibleCenterEntries` is sliced again on each range
+update; keyboard navigation callbacks depend on the current range, and the
+roving focus position can change. These identities prevent shallow comparison
+from reusing retained rows. Ignoring those props in a custom comparator could
+retain stale navigation closures or stale cell/tabindex state. This experiment
+does not establish whether a redesigned stable row boundary would help.
+
+The benchmark uses the existing dense (100,000 rows) and wide examples in Vite
+production builds. A build-only transform instruments row render calls in both
+variants and adds the memo wrapper only in the candidate. It changes no published
+entry point, production renderer, or semantic `Table` behavior. Starting at a
+2,000-pixel offset avoids the initial overscan plateau; each sample performs 180
+range-crossing scrolls, one step per two animation frames. Setup, initial mount,
+and viewport settling are outside timing. Each workload has one warm-up and
+five fresh-page samples. Reports retain Chromium script/task duration deltas,
+all two-frame step intervals, row render calls, DOM row mounts/unmounts, range
+changes, and final mounted/first-row counts. Render calls are instrumentation,
+not React commit counts. Two-frame intervals are scheduler observations, not
+individual display-frame or input-latency measurements.
+
+Run both variants from the same checkout on the same idle machine. Artifacts
+are local and ignored; no extra CI job is required:
+
+```sh
+bun install --frozen-lockfile
+bunx playwright install chromium
+bun run build:wasm
+bun run benchmark:row-memo --variant baseline --output .artifacts/row-memo/baseline.json
+bun run benchmark:row-memo --variant candidate --output .artifacts/row-memo/candidate.json
+bun run benchmark:compare -- .artifacts/row-memo/baseline.json .artifacts/row-memo/candidate.json
+```
+
+The comparison command reports median **script** time for this report shape;
+inspect the retained samples and frame/work counters alongside it. Repeat the
+pair in reverse order before making a timing-based adoption decision. The
+prototype deliberately does not ignore changing handlers or enforce new cell
+renderer requirements. Immutable row snapshots remain required for the prepared
+query path; this deferral introduces no additional renderer purity contract or
+new way to refresh cells by mutation.
+
+### Local observations, 2026-11-12
+
+Renderer source: `a4f4dd26140195456d5a052fbfa9804fcace41e2`. Linux x64, AMD Ryzen 7 5700X (16 logical CPUs), Bun 1.4.4, Chromium 156.0.8078.4, viewport 1440 × 1000. These are sequential same-machine runs on a shared workstation, not isolated controlled timing. They are not directly comparable to #79’s development-build script totals.
+
+| Workload | Baseline script median (ms) | Memo script median (ms) | Row renders per sample (both) | DOM mounts/unmounts (both) | Two-frame p95 baseline / memo (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| dense-range-scroll-100px | 1039.3 | 1849.6 | 7700 | 500 / 500 | 33.4 / 33.4 |
+| dense-range-scroll-800px | 1156.2 | 1705.2 | 7700 | 4000 / 4000 | 33.4 / 50.0 |
+| wide-range-scroll-100px | 474.1 | 508.2 | 5645 | 409 / 409 | 33.4 / 33.4 |
+
+All script samples in milliseconds, baseline then memo:
+
+- `dense-range-scroll-100px`: [1037.3, 1011.7, 1039.3, 1273.2, 1118.8] → [1625.4, 1849.6, 2508.4, 1421.8, 2016.8].
+- `dense-range-scroll-800px`: [1349.9, 1249.2, 1156.2, 1103.6, 1085.4] → [2388.1, 2481.0, 1705.2, 1641.7, 1553.4].
+- `wide-range-scroll-100px`: [775.5, 432.2, 474.1, 468.5, 583.0] → [469.1, 465.9, 508.2, 588.0, 541.3].
+
+All samples in both variants crossed the range on all 180 steps; mounted rows and final first-row positions matched. There is no timing evidence supporting adoption, and the exact render counts show no eliminated row work. The slower candidate samples cannot isolate memo overhead from workstation contention. The decision rests on the absence of reusable row renders, not a claimed universal slowdown. Focus, keyboard, selection, sort/filter, resizing, viewport changes, and visible-cell correctness for a redesigned memoized implementation remain unverified; no such implementation is adopted.
+
+The disposable baseline production example build totals 391,265 JavaScript bytes (118,166 gzip bytes summed per asset). The disposable candidate production example build totals 389,601 JavaScript bytes (117,583 gzip bytes summed per asset). These totals include the same instrumentation and all example entry points; they are not published-package size measurements. The production library renderer is unchanged.
