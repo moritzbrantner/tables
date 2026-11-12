@@ -48,6 +48,7 @@ export type TableDataColumn<TRow, TValue = unknown> = {
   maxWidth?: number;
   minWidth?: number;
   resizable?: boolean;
+  /** Pure, deterministic sort value. Invocation counts and order are unspecified. */
   sortAccessor?: (row: TRow, rowIndex: number) => string | number | boolean | Date | null;
   sortable?: boolean;
   sticky?: TableColumnSticky;
