@@ -53,3 +53,44 @@ Use the cheapest layer that can observe the behavior reliably:
 - Rust/Wasm parity and lower-level Rust checks: Rust Foundation workflow.
 
 Do not copy the same assertion into every layer merely to increase test counts. Browser acceptance should exist where the browser is part of the behavior.
+
+## Generated interactive-grid journey
+
+```sh
+bun run test:e2e:model
+bun run test:e2e:model:full
+```
+
+The first command runs the bounded smoke path in the existing Playwright harness;
+`verify:browser` includes the same two cases. The second command opts into all
+modeled edges (`TABLES_MODEL_FULL=1`), with a shortest prefix to each edge and
+self-loops repeated twice. It does not enumerate arbitrary event sequences.
+
+`tests/e2e/pipeline-journey.model.ts` contains the six-state XState contract for the
+Pages overview: all rows → exact-ID search → ascending ID sort → row selection →
+empty search → clear search, then navigation to the overview to reset. Repeated
+searches retain sort and selection. An empty result blocks selection because no
+result row exists; the previously selected account remains in the details panel.
+The visible expectations are literal browser outcomes independent of `TableState`,
+query helpers, Rust and fixture-generation code. XState and its graph utilities
+are development dependencies only. Library query and application URL ownership
+remain unchanged.
+
+Each path starts from a fresh overview navigation. Desktop execution uses keyboard
+input, Enter to sort, and Space to select with focus assertions. The mobile case
+uses a 390 × 844 Chromium touch context and taps the search, sort and row controls.
+This is emulation, not physical-device verification. Search text is entered through
+Playwright; virtual-keyboard layout is outside this contract.
+
+Each case prints a deterministically ordered coverage report and attaches
+`pipeline-coverage.json` to its Playwright result, including visits per state/edge,
+explicit gaps, completed paths and the blocked selection check. Visits count only
+after the visible assertions pass; failed runs preserve their partial report.
+The initial local run measured the smoke cases at about 3–4 seconds each;
+full traversal took 42.6 seconds total across the two input modes. These are
+informational developer-machine observations, not timing budgets.
+Smoke covers all six states and 11 of 16 edges; the five intermediate reset edges
+remain reported gaps. Full edge traversal covers all 16. Neither mode proves
+arbitrary queries, every sorting direction, multi-row selection, other example
+pages, URL history, every viewport or unbounded repetitions. Existing dedicated
+browser and accessibility tests continue to cover their own contracts.
