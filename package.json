@@ -85,6 +85,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.2.1",
+    "@xstate/graph": "^3.0.4",
     "jsdom": "26.1.0",
     "publint": "0.3.25",
     "react": "19.3.1",
@@ -93,7 +94,8 @@
     "tsup": "8.5.1",
     "typescript": "6.0.3",
     "vite": "8.3.6",
-    "vitest": "4.1.12"
+    "vitest": "4.1.12",
+    "xstate": "^5.33.4"
   },
   "publishConfig": {
     "access": "public",
@@ -128,6 +130,8 @@
     "benchmark:references:browser": "node benchmarks/browser/run.mjs",
     "benchmark:windows": "bun scripts/benchmark-query-windows.ts",
     "benchmark:sessions": "bun scripts/benchmark-query-sessions.ts",
-    "benchmark:preparation": "bun scripts/benchmark-column-preparation.ts"
+    "benchmark:preparation": "bun scripts/benchmark-column-preparation.ts",
+    "test:e2e:model": "playwright test pipeline-journey.spec.ts",
+    "test:e2e:model:full": "TABLES_MODEL_FULL=1 playwright test pipeline-journey.spec.ts"
   }
 }
