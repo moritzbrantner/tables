@@ -22,7 +22,6 @@
     "typescript",
     "virtualization"
   ],
-  "packageManager": "bun@1.4.5",
   "files": [
     "dist",
     "docs",
